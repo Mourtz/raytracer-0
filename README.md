@@ -23,7 +23,7 @@ of all browsers.
 * **Reinhard** tone mapping
 * cosine weighted **importance sampling**
 
-[Demo](https://cdn.rawgit.com/Mourtz/raytracer-0/e511aa60/index.html)
+[**Demo**](https://mourtz.github.io/raytracer-0/)
 
 ---
 
