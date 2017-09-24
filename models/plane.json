@@ -1,0 +1,6 @@
+{
+"vertexPositions" : [-1,-1,0,1,-1,0,1,1,0,-1,1,0],
+"vertexNormals" : [0,0,1,0,0,1,0,0,1,0,0,1],
+"vertexTextureCoords" : [],
+"indices" : [0,1,2,0,2,3]
+}

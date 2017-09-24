@@ -1,0 +1,109 @@
+body {
+  background: #004d40;
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0;
+  margin: 0;
+  width: 80%;
+  left: 10%;
+  color: floralwhite;
+}
+
+#ff {
+  position: relative;
+  margin-top: 2%;
+}
+
+#ff .progress {
+  margin: 0;
+}
+
+#intro {
+  display: block;
+  margin-top: 1px;
+  text-align: center;
+  position: relative;
+}
+
+#glslViewport {
+  display: inline-block;
+  /* checkerboard http://snipplr.com/view/65431/ */
+  background-color: #FEFEFE;
+  background-image: -webkit-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -webkit-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
+  background-image: -moz-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -moz-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
+  background-image: -o-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -o-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
+  background-image: -ms-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -ms-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
+  background-image: linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
+  -webkit-background-size: 10px 10px;
+  -moz-background-size: 10px 10px;
+  background-size: 10px 10px;
+  background-position: 0 0, 15px 15px;
+}
+
+#settings {
+  display: inline-block;
+  vertical-align: top;
+  margin-top: -30px;
+  margin-left: 5%;
+  width: 39%;
+}
+
+#settings #checkboxes div {
+  display: inline-block;
+}
+
+#settings #checkboxes div label {
+  padding-left: 20px;
+}
+
+#settings h4 {
+  text-align: center;
+}
+
+#settings .range-field {
+  margin: 0 0 0 0;
+}
+
+#settings .btn {
+  margin-top: 1.5%;
+  margin-left: 1%;
+  width: 48%;
+}
+
+#settings #infoBtn {
+  background-color: green;
+  width: 98%;
+}
+
+#settings #compileBtn {
+  background-color: rgb(105, 105, 105);
+  width: 98%;
+}
+
+#modal1 .modal-content,
+#modal1 .modal-footer {
+  background-color: #50834a;
+}
+
+#scene_wrapper {
+  display: inline-block;
+  width: 50%;
+}
+
+#scene {
+  display: inline-block;
+  background-color: black;
+  font-family: monospace;
+  resize: none;
+  overflow: hidden;
+  margin-top: 10px;
+  border-radius: 5px;
+}
+
+#sdf_meshes {
+  display: inline-block;
+  vertical-align: top;
+  margin-left: 2%;
+  width: 47%;
+}

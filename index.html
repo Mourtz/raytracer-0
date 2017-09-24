@@ -1,0 +1,719 @@
+<html>
+
+<head>
+  <title>WebGL2 Raytracer</title>
+  <!--Let browser know website is optimized for mobile-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!--  CSS  -->
+  <link href="index.css" rel="stylesheet">
+  <!--Import materialize.css-->
+  <link type="text/css" rel="stylesheet" href="external/css/materialize.min.css" media="screen,projection" /> </head>
+
+<body>
+  <div id="intro">
+    <h4>WebGL 2 Path Tracer</h4>
+    <div id="stats"></div>
+  </div>
+  <div id="ff">
+    <div class="progress">
+      <div class="determinate" style="width: 0%"></div>
+    </div>
+    <div id="glslViewport"></div>
+    <div id="settings">
+      <h4>Settings</h4>
+
+      <div id="checkboxes">
+        <div>
+          <input type="checkbox" id="u_cubemap" checked="checked" onchange="updateParams(this);" />
+          <label for="u_cubemap">CUBEMAP</label>
+        </div>
+
+        <div>
+          <input type="checkbox" id="u_biased_sampling" checked="checked" onchange="updateParams(this);" />
+          <label for="u_biased_sampling">BIASED</label>
+        </div>
+
+        <div>
+          <input type="checkbox" id="u_procedural_sky" onchange="updateParams(this);" />
+          <label for="u_procedural_sky">PROCEDURAL SKY</label>
+        </div>
+
+        <div>
+          <input type="checkbox" id="sample_lights" checked="checked" onchange="updateParams(this);" />
+          <label for="sample_lights">SAMPLE LIGHTS</label>
+        </div>
+
+        <div>
+          <input type="checkbox" id="u_biDirectional" onchange="updateParams(this);" />
+          <label for="u_biDirectional">BI-DIRECTIONAL</label>
+        </div>
+      </div>
+
+      <br>
+
+      <div class="input-field col s12">
+        <select onchange='sandbox.resize(Number(this.value));'>
+          <option value="0" selected>256x256</option>
+          <option value="1">512x512</option>
+          <option value="2">1024x1024</option>
+          <option value="3">2048x2048</option>
+          <option value="4">4096x4096</option>
+          <option value="5">8192x8192(on your own risk!)</option>
+        </select>
+        <label>Output resolution</label>
+      </div>
+
+      <!-- Scene Select -->
+      <div class="input-field col s12">
+        <select onchange='scene_select(Number(this.value));'>
+          <option value="0" selected>Default</option>
+          <option value="1">Cornell Box</option>
+          <option value="2">Mandelbulb</option>
+          <option value="3">MengerSponge</option>
+          <option value="4" disabled>BiDirTest0</option>
+        </select>
+        <label>Scene Select</label>
+      </div>
+
+      <!-- Passes -->
+      <p class="range-field">
+        <label>Passes</label>
+        <input type="range" id="passes" min="1" max="1e4" value="64" onchange="updateParams(this);" />
+      </p>
+
+      <p class="range-field">
+        <label>Max Raymarching Steps</label>
+        <input type="range" id="m_steps" min="64" max="512" value="128" onchange="updateParams(this);" />
+      </p>
+
+      <p class="range-field">
+        <label>Max Bounces</label>
+        <input type="range" id="max_bounces" min="1" max="24" value="12" onchange="updateParams(this);" />
+      </p>
+
+      <p class="range-field">
+        <label>Max Diffuse Bounces</label>
+        <input type="range" id="max_diff" min="1" max="24" value="4" onchange="updateParams(this);" />
+      </p>
+
+      <p class="range-field">
+        <label>Max Specular Bounces</label>
+        <input type="range" id="max_spec" min="1" max="24" value="4" onchange="updateParams(this);" />
+      </p>
+
+      <p class="range-field">
+        <label>Max Transmission Bounces</label>
+        <input type="range" id="max_trans" min="1" max="24" value="12" onchange="updateParams(this);" />
+      </p>
+
+      <p class="range-field">
+        <label>Max Scattering Events</label>
+        <input type="range" id="max_scatter" min="1" max="24" value="12" onchange="updateParams(this);" />
+      </p>
+
+      <!-- Clear --><a class="waves-effect waves-light btn" onclick="rendering=false; sandbox.clear();">Clear</a>
+      <!-- Render --><a class="waves-effect waves-light btn" id="renderBtn" onclick="draw();">Render</a>
+      <!-- Compile --><a class="waves-effect waves-light btn" id="compileBtn" onclick="recompile()">Compile</a>
+      <!-- Controls --><a class="waves-effect waves-light btn modal-trigger" id="infoBtn" href="#modal1">Controls</a>
+    </div>
+
+    <div>
+      <!--   Scene modifier wrapper   -->
+      <div id="scene_wrapper">
+        Current Scene:<br>
+        <textarea id="scene" oninput='this.style.height = "1px"; this.style.height = this.scrollHeight+"px"; $("#compileBtn").css("background-color", "rgb(255, 0, 0)");'>MAT_TEST, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
+MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
+      </div>
+
+      <!--   SDF selector   -->
+      <div id="sdf_meshes">
+
+      </div>
+    </div>
+
+  </div>
+
+  <div id="modal1" class="modal">
+    <div class="modal-content">
+      <p>
+        <b>Controls:</b><br> W/A/S/D/Q/E to modify camera's origin,<br> UP/LEFT/DOWN/RIGHT arrow to modify camera's concentration point position,<br> 1/! to increase/decrease the field of view,<br> 2/@ to increase/decrease the aperture size,<br> 3/# to increase/decrease the focal length,<br> SPACE to reset camera,<br> R to reset view direction,<br> Esc to stop
+      </p>
+    </div>
+    <div class="modal-footer">
+      <a href="#!" class="modal-action modal-close waves-effect waves-green btn-flat">Close</a>
+    </div>
+  </div>
+
+  <!--	   jQuery 2.2.4      -->
+  <script src="external/js/jquery.min.js"></script>
+  <!--	Materializecss  -->
+  <script src="external/js/materialize.min.js"></script>
+  <!--	@mrdoob stats.js -->
+  <script src="external/js/stats.min.js"></script>
+  <!--    Custom GL Tools    -->
+  <script src="tools.js"></script>
+  <!--      Vector2,3,4      -->
+  <script src="vector.js"></script>
+  <!--         index         -->
+  <script src="index.js"></script>
+
+  <script>
+    const w_size = window.innerWidth / 2.5;
+    const cubemap_dir = "Tropical%20Beach";
+
+    $("#ff .progress").css("width", w_size);
+
+    let shaders = [{
+        "name": 'vertex_shader',
+        "type": 'vert',
+        "filepath": "shaders/vert.glsl"
+      },
+      {
+        "name": 'raytracing_shader',
+        "type": 'frag',
+        "filepath": "shaders/pathtracing/raytracer.glsl"
+      },
+      {
+        "name": 'display_shader',
+        "type": 'frag',
+        "filepath": "shaders/tonemapper.glsl"
+      }
+    ];
+
+    let sandbox = new GlslViewport(null, {
+      tile_rendering: false,
+      shaders: shaders,
+      textures: ["textures/tex0.png", "textures/tex1.png", "textures/tex2.png", "textures/tex3.png"],
+
+      //"cubemaps/Yokohama/negx.jpg",  "cubemaps/Yokohama/negy.jpg", "cubemaps/Yokohama/negz.jpg",
+      //"cubemaps/Yokohama/posx.jpg",  "cubemaps/Yokohama/posy.jpg", "cubemaps/Yokohama/posz.jpg"
+
+      cubemap: [
+        "cubemaps/" + cubemap_dir + "/left.jpg", "cubemaps/" + cubemap_dir + "/bottom.jpg", "cubemaps/" + cubemap_dir + "/back.jpg",
+        "cubemaps/" + cubemap_dir + "/right.jpg", "cubemaps/" + cubemap_dir + "/top.jpg", "cubemaps/" + cubemap_dir + "/front.jpg"
+      ],
+      width: w_size * window.devicePixelRatio,
+      height: w_size * window.devicePixelRatio,
+      max_passes: 64,
+      paused: false,
+      preserveDrawingBuffer: false
+    });
+
+    // @mrdoob stats.js
+    let stats = new Stats();
+    stats.showPanel(0);
+    document.body.appendChild(stats.dom);
+    document.getElementById("glslViewport").appendChild(sandbox.canvas);
+
+    $("#glslViewport canvas").css("width", w_size);
+    $("#glslViewport canvas").css("height", w_size);
+
+    let lastDownTarget;
+
+    document.addEventListener('mousedown', function(evt) {
+      lastDownTarget = evt.target;
+
+    }, false);
+
+    const cam_step = 0.1;
+    const cam_rot_step = 0.05;
+    const cam_aperture_step = 0.001;
+
+    let flagY = false;
+    let flagZ = false;
+
+    document.addEventListener('keydown', function(evt) {
+
+      if (lastDownTarget == $("#glslViewport canvas").get(0)) {
+        let gl = sandbox.gl;
+        //      sandbox.keyboardTexVal[evt.keyCode] = 1;
+        //
+        //      gl.activeTexture(gl.TEXTURE0 + keyboardTexPos);
+        //      gl.bindTexture(gl.TEXTURE_2D, sandbox.textures["keyboard_tex"]["tex"]);
+        //      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 256, 1, 0, gl.RED, gl.UNSIGNED_BYTE, sandbox.keyboardTexVal);
+
+        let refresh = true;
+
+        if (evt.code === "Escape") {
+          sandbox.passes = sandbox.max_passes;
+          return;
+        } else if (evt.code === "Space") { // Spacebar - reset camera
+          sandbox.camera.origin = new Vector3(0.0, 0.0, 3.0);
+          sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+          sandbox.camera.fov = 90.0;
+          sandbox.camera.aperture = 0.01;
+          sandbox.camera.focalLength = 10.0;
+          flagY = false;
+          flagZ = false;
+        } else if (evt.keyCode === 82) sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0); // R - reset view direction
+        else if (evt.keyCode === 65) sandbox.camera.origin.x -= cam_step; // A
+        else if (evt.keyCode === 68) sandbox.camera.origin.x += cam_step; // D
+        else if (evt.keyCode === 87) sandbox.camera.origin.z -= cam_step; // W
+        else if (evt.keyCode === 83) sandbox.camera.origin.z += cam_step; // S
+        else if (evt.keyCode === 81) sandbox.camera.origin.y -= cam_step; // Q
+        else if (evt.keyCode === 69) sandbox.camera.origin.y += cam_step; // E
+        else if (evt.key === "ArrowUp") {
+          if (!flagY) {
+            sandbox.camera.lookat.y += cam_rot_step;
+            if (sandbox.camera.lookat.y > 1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagY = !flagY;
+            }
+          } else {
+            sandbox.camera.lookat.y -= cam_rot_step;
+            if (sandbox.camera.lookat.y < -1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagY = !flagY;
+            }
+          }
+        } else if (evt.key === "ArrowDown") {
+          if (flagY) {
+            sandbox.camera.lookat.y += cam_rot_step;
+            if (sandbox.camera.lookat.y > 1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagY = !flagY;
+            }
+          } else {
+            sandbox.camera.lookat.y -= cam_rot_step;
+            if (sandbox.camera.lookat.y < -1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagY = !flagY;
+            }
+          }
+        } else if (evt.key === "ArrowLeft") {
+          if (!flagZ) {
+            sandbox.camera.lookat.x -= cam_rot_step;
+            if (sandbox.camera.lookat.x < -1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagZ = !flagZ;
+            }
+          } else {
+            sandbox.camera.lookat.x += cam_rot_step;
+            if (sandbox.camera.lookat.x > 1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagZ = !flagZ;
+            }
+          }
+        } else if (evt.key === "ArrowRight") {
+          if (flagZ) {
+            sandbox.camera.lookat.x -= cam_rot_step;
+            if (sandbox.camera.lookat.x < -1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagZ = !flagZ;
+            }
+          } else {
+            sandbox.camera.lookat.x += cam_rot_step;
+            if (sandbox.camera.lookat.x > 1.0) {
+              sandbox.camera.lookat.z *= -1;
+              flagZ = !flagZ;
+            }
+          }
+        } else if (evt.key === "1") sandbox.camera.fov = Math.min(130, sandbox.camera.fov + 1);
+        else if (evt.key === "!") sandbox.camera.fov = Math.max(5, sandbox.camera.fov - 1);
+        else if (evt.key === "2") sandbox.camera.aperture = Math.min(0.1, sandbox.camera.aperture + cam_aperture_step);
+        else if (evt.key === "@") sandbox.camera.aperture = Math.max(0.0, sandbox.camera.aperture - cam_aperture_step);
+        else if (evt.key === "3") sandbox.camera.focalLength += 0.1;
+        else if (evt.key === "#") sandbox.camera.focalLength = Math.max(0.1, sandbox.camera.focalLength - 0.1);
+        else refresh = false;
+
+        if (refresh) {
+          $("#intro #stats").html("<b>camera</b> pos: " + sandbox.camera.origin.x.toFixed(3) + ", " + sandbox.camera.origin.y.toFixed(3) + ", " + sandbox.camera.origin.z.toFixed(3) +
+            " | dir: " + sandbox.camera.lookat.x.toFixed(3) + ", " + sandbox.camera.lookat.y.toFixed(3) + ", " + sandbox.camera.lookat.z.toFixed(3) + "<br>" +
+            " fov: " + sandbox.camera.fov + ", aperture: " + sandbox.camera.aperture.toFixed(3) + ", focal length: " + sandbox.camera.focalLength.toFixed(3));
+
+          gl.useProgram(sandbox.frontTarget.program);
+
+          gl.uniform3f(sandbox.frontTarget.camPosID, sandbox.camera.origin.x, sandbox.camera.origin.y, sandbox.camera.origin.z);
+          gl.uniform3f(sandbox.frontTarget.camLookAtID, sandbox.camera.lookat.x, sandbox.camera.lookat.y, sandbox.camera.lookat.z);
+          gl.uniform3f(sandbox.frontTarget.camParamsID, sandbox.camera.fov, sandbox.camera.aperture, sandbox.camera.focalLength);
+
+          sandbox.passes = 0;
+          sandbox.clear();
+        }
+
+      }
+
+    }, false);
+
+    let rendering = false;
+
+    function updateParams(el) {
+
+      if (el.type == "range") {
+        if (el.id === "passes") {
+          sandbox.max_passes = el.value;
+          return;
+        } else {
+          sandbox.gl.useProgram(sandbox.frontTarget.program);
+
+          if (el.id === "m_steps") {
+            sandbox.constants[5] = "const mediump int MARCHING_STEPS = " + el.value + ";";
+          } else if (el.id === "max_bounces") {
+            $('#max_diff').attr("max", el.value);
+            $('#max_spec').attr("max", el.value);
+            $('#max_trans').attr("max", el.value);
+            $('#max_scatter').attr("max", el.value);
+
+            sandbox.constants[0] = "const lowp int MAX_BOUNCES = " + el.value + ";";
+          } else if (el.id === "max_diff") {
+            sandbox.constants[1] = "const lowp int MAX_DIFF_BOUNCES = " + el.value + ";";
+          } else if (el.id === "max_spec") {
+            sandbox.constants[2] = "const lowp int MAX_SPEC_BOUNCES = " + el.value + ";";
+          } else if (el.id === "max_trans") {
+            sandbox.constants[3] = "const lowp int MAX_TRANS_BOUNCES = " + el.value + ";";
+          } else if (el.id === "max_scatter") {
+            sandbox.constants[4] = "const lowp int MAX_SCATTERING_EVENTS = " + el.value + ";";
+          } else {
+            return console.error();
+          }
+        }
+
+      } else if (el.type == "checkbox") {
+        if (el.id == "u_cubemap") {
+          sandbox.defines[0] = el.checked ? "#define USE_CUBEMAP" : "";
+        } else if (el.id == "u_procedural_sky") {
+          sandbox.defines[1] = el.checked ? "#define USE_PROCEDURAL_SKY" : "";
+        } else if (el.id == "u_biased_sampling") {
+          sandbox.defines[2] = el.checked ? "#define USE_BIASED_SAMPLING" : "";
+        } else if (el.id == "sample_lights") {
+          sandbox.constants[7] = "const bool sample_lights = " + el.checked + ";";
+        } else if (el.id == "u_biDirectional") {
+          sandbox.defines[3] = el.checked ? "#define USE_BIDIRECTIONAL" : "";
+
+          if (el.checked) {
+            $("#sample_lights").prop('checked', true);
+            sandbox.constants[7] = "const bool sample_lights = true;";
+          }
+        } else {
+          return console.error();
+        }
+
+      } else if (el.type == "textarea") {
+        if (el.id == "scene") {
+
+          let NUM_MESHES = 0;
+          let NUM_SDFS = 0;
+          let NUM_MODELS = 0;
+
+          let U_SPHERE = false; // using Euclidean sphere?
+          let U_PLANE = false; // using Euclidean plane?
+          let U_BOX = false; // using Non-Euclidean box?
+          let U_SDF = false; // using SDF meshes?
+
+          let light_indices = [];
+
+          let line = el.text.split("\n");
+          let text = [];
+
+          for (let i = 0; i < line.length; i++) {
+
+            let fields = line[i].split(",");
+
+            let mat = fields[0].trim();
+            if (mat.lastIndexOf("MAT_LIGHT") >= 0) {
+              light_indices.push(i);
+            }
+            let type = fields[1].trim();
+
+            text[i] = "Mesh(" + line[i] + ")";
+
+            if (i != line.length - 1) text[i] += ',';
+
+            if (type == "SDF" || type == "GRID_SDF") {
+              NUM_SDFS++;
+            } else if (type == "PLANE" || type == "SPHERE" || type == "BOX") {
+              U_SPHERE |= type == "SPHERE";
+              U_PLANE |= type == "PLANE";
+              U_BOX |= type == "BOX";
+              NUM_MESHES++;
+            } else if (type == "TRIANGLE") {
+              NUM_MODELS++;
+            } else {
+              return alert("There's no such thing as " + type);
+            }
+          }
+
+          if (light_indices.length == 0) light_indices.push(-1);
+
+          sandbox.scene = `//--------------------- EUCLIDEAN/QUADRIC PARAMS --------------------------------
+
+const bool U_EUCLIDEAN = ` + (NUM_MESHES > 0) + `;    // using Euclidean meshes?
+const bool U_SPHERE = ` + Boolean(U_SPHERE) + `;       // using Euclidean sphere?
+const bool U_PLANE = ` + Boolean(U_PLANE) + `;        // using Euclidean plane?
+const bool U_BOX = ` + Boolean(U_BOX) + `;         // using Non-Euclidean box?
+const bool U_SDF = ` + (NUM_SDFS > 0) + `;          // using SDF meshes?
+
+const lowp int NUM_MESHES = ` + NUM_MESHES + `;
+const lowp int NUM_SDFS   = ` + NUM_SDFS + `;
+const lowp int NUM_MODELS = ` + NUM_MODELS + `;
+
+const Mesh meshes[NUM_MESHES + NUM_SDFS + NUM_MODELS] = Mesh[](
+` + text.join("\n") + `
+);
+
+// light index
+const lowp int light_index[` + light_indices.length + `] = int[](
+` + light_indices.join("\n") + `
+);`;
+
+          let sdf_html = [];
+          sandbox.sdf_meshes = [];
+          for (let i = 0; i < NUM_SDFS; i++) {
+
+            let el = $("#sdf" + i).val() || 0;
+
+            if (i == 0) sdf_html.push("SDF meshes");
+            sdf_html.push("<div class=\"input-field col s12\">")
+            sdf_html.push("<select id = 'sdf" + i + "' onchange='$(\"#compileBtn\").css(\"background-color\", \"rgb(255, 0, 0)\");'>");
+
+            let curr_val = 0;
+
+            sdf_html.push("<option value='" + curr_val + "' " + (curr_val == el ? "selected" : "") + ">Box</option>");
+            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">RoundBox</option>");
+            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">Sphere</option>");
+            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">TriPrism</option>");
+            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">Cone</option>");
+            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">MengerSponge</option>");
+            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">Mandelbulb</option>");
+            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">(BiDir)Test0</option>");
+
+            sdf_html.push("</select>");
+            sdf_html.push("</div>");
+
+            if (el == 0)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(sdBox(p-meshes[NUM_MESHES + " + i + "].pos, meshes[NUM_MESHES + " + i + "].joker.xyz), " + i.toFixed(4) + ");");
+            else if (el == 1)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(udRoundBox(p-meshes[NUM_MESHES + " + i + "].pos, meshes[NUM_MESHES + " + i + "].joker.xyz, meshes[NUM_MESHES + " + i + "].joker.w), " + i.toFixed(4) + ");");
+            else if (el == 2)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(sdSphere(p-meshes[NUM_MESHES + " + i + "].pos, meshes[NUM_MESHES + " + i + "].joker.x), " + i.toFixed(4) + ");");
+            else if (el == 3)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(sdTriPrism(p-meshes[NUM_MESHES + " + i + "].pos, meshes[NUM_MESHES + " + i + "].joker.xy), " + i.toFixed(4) + ");");
+            else if (el == 4)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(sdCone(p-meshes[NUM_MESHES + " + i + "].pos, meshes[NUM_MESHES + " + i + "].joker.xyz), " + i.toFixed(4) + ");");
+            else if (el == 5)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(MengerSponge(p-meshes[NUM_MESHES + " + i + "].pos, meshes[NUM_MESHES + " + i + "].joker.xyz), " + i.toFixed(4) + ");");
+            else if (el == 6)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(Mandelbulb(p-meshes[NUM_MESHES + " + i + "].pos), " + i.toFixed(4) + ");");
+            else if (el == 7)
+              sandbox.sdf_meshes.push("sdf_meshes[" + i + "] = vec2(BiDirTest0(p-meshes[NUM_MESHES + " + i + "].pos, meshes[NUM_MESHES + " + i + "].joker.x), " + i.toFixed(4) + ");");
+
+          }
+
+          // update sdf_meshes selector
+          $("#sdf_meshes").html(sdf_html.join("\n"));
+          $('select').material_select();
+        }
+      } else {
+        return console.error();
+      }
+
+      rendering = false;
+      if (!el.dn_highlight) $("#compileBtn").css("background-color", 'rgb(255, 0, 0)');
+      sandbox.clear();
+      sandbox.passes = 0;
+    }
+
+    function scene_select(val) {
+      let scene_el = document.getElementById("scene");
+      let enabled = [false, false, false];
+
+      if (val == 0) { // Default Scene
+        scene_el.value = `MAT_TEST, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
+MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)`;
+
+        enabled[0] = true;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(0);
+        $("#sdf1").val(0);
+        $('select').material_select();
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 3.0);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      } else if (val == 1) {
+        scene_el.value = `MAT_WHITE, PLANE, vec3(0.0, 1.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, -1.0, 0.0), vec4(2.0)
+MAT_GREEN, PLANE, vec3(1.0, 0.0, 0.0), vec4(2.0)
+MAT_RED, PLANE, vec3(-1.0, 0.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, 1.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, -1.0), vec4(2.0)
+MAT_LIGHT_4_TEX, SPHERE, vec3(0.0,1.5,-1.5), vec4(0.5)
+MAT_REFR_CLEAR, SPHERE, vec3(0.0), vec4(0.5)`;
+
+        enabled[0] = false;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+        $("#compileBtn").css("background-color", 'rgb(255, 0, 0)');
+      } else if (val == 2) {
+        scene_el.value = `MAT_WHITE, PLANE, vec3(0.0, 1.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, -1.0, 0.0), vec4(2.0)
+MAT_GREEN, PLANE, vec3(1.0, 0.0, 0.0), vec4(2.0)
+MAT_RED, PLANE, vec3(-1.0, 0.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, 1.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, -1.0), vec4(2.0)
+MAT_LIGHT_4, SPHERE, vec3(0.0,1.5,1.5), vec4(0.5)
+MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
+
+        enabled[0] = false;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(6);
+        $('select').material_select();
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      } else if (val == 3) {
+        scene_el.value = `MAT_COAT_WAX, SDF, vec3(0.0), vec4(1.0)`;
+
+        enabled[0] = true;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(5);
+        $('select').material_select();
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 2.0);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      } else if (val == 4) {
+        scene_el.value = `MAT_WHITE, SDF, vec3(0.0), vec4(1.0)`;
+
+        enabled[0] = false;
+        enabled[1] = true;
+        enabled[2] = true;
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(7);
+        $('select').material_select();
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      }
+
+      // Cubemap
+      sandbox.defines[0] = enabled[0] ? "#define USE_CUBEMAP" : "";
+      $("#u_cubemap").prop('checked', enabled[0]);
+
+      // Bi-Directional Pathtracing
+      sandbox.defines[3] = enabled[1] ? "#define USE_BIDIRECTIONAL" : "";
+      $("#u_biDirectional").prop('checked', enabled[1]);
+
+      // sample lights
+      sandbox.constants[7] = "const bool sample_lights = " + enabled[2] + ";";
+      $("#sample_lights").prop('checked', enabled[2]);
+
+      $("#intro #stats").html("<b>camera</b> pos: " + sandbox.camera.origin.x.toFixed(3) + ", " + sandbox.camera.origin.y.toFixed(3) + ", " + sandbox.camera.origin.z.toFixed(3) +
+        " | dir: " + sandbox.camera.lookat.x.toFixed(3) + ", " + sandbox.camera.lookat.y.toFixed(3) + ", " + sandbox.camera.lookat.z.toFixed(3) + "<br>" +
+        " fov: " + sandbox.camera.fov + ", aperture: " + sandbox.camera.aperture.toFixed(3) + ", focal length: " + sandbox.camera.focalLength.toFixed(3));
+
+      sandbox.gl.useProgram(sandbox.frontTarget.program);
+
+      sandbox.gl.uniform3f(sandbox.frontTarget.camPosID, sandbox.camera.origin.x, sandbox.camera.origin.y, sandbox.camera.origin.z);
+      sandbox.gl.uniform3f(sandbox.frontTarget.camLookAtID, sandbox.camera.lookat.x, sandbox.camera.lookat.y, sandbox.camera.lookat.z);
+
+      scene_el.style.height = "1px";
+      scene_el.style.height = scene_el.scrollHeight + "px";
+    }
+
+    function recompile() {
+      if ($("#compileBtn").css("background-color") == "rgb(105, 105, 105)") return console.info("There is no need to recompile the shader.");
+
+      updateParams({
+        type: 'textarea',
+        id: 'scene',
+        dn_highlight: true,
+        text: $("#scene").val()
+      });
+
+      try{
+        sandbox.gl.detachShader(sandbox.frontTarget.program, sandbox.shaders[shaders[1].name]);
+      } catch(e) { console.warn(e.message) };
+      shaders[1].string = parseShader(shaders[1].filepath, sandbox);
+      sandbox.createShader(shaders[1]);
+      sandbox.gl.attachShader(sandbox.frontTarget.program, sandbox.shaders[shaders[1].name]);
+      sandbox.gl.linkProgram(sandbox.frontTarget.program);
+      sandbox.updateFrontTarget();
+
+      console.clear();
+      $("#compileBtn").css("background-color", 'rgb(105, 105, 105)');
+    }
+
+    function RenderLoop() {
+      stats.begin();
+      if (rendering) sandbox.render();
+      stats.end();
+
+      // display rendering info
+      let t = (performance.now() - sandbox.loadTime) / 1000;
+      // tile rendering
+      if (sandbox.tile_rendering && sandbox.tile_size != 0 && sandbox.passes >= sandbox.max_passes) sandbox.updateTile();
+
+      if (rendering && sandbox.passes < sandbox.max_passes) {
+        let progress = Math.round(100 * sandbox.passes / sandbox.max_passes);
+        $("#ff .progress .determinate").css("width", progress + '%');
+        !console.log("%cProgress: ", 'color: #00ff14', progress + '% (' + t + 's)') && window.requestAnimFrame(RenderLoop);
+      } else {
+        !console.log("%cStopped!", 'color: #ff0000') && console.log("%cTotal time: " + t + " s,\nPasses: " + sandbox.passes, 'color: #0096FF');
+        rendering = false;
+        $("#ff .progress .determinate").css("width", 0 + '%');
+        document.getElementById("renderBtn").innerHTML = "RENDER";
+      }
+    }
+
+    function draw() {
+      rendering = !rendering;
+      document.getElementById("renderBtn").innerHTML = rendering ? "STOP" : "RENDER";
+      if (rendering) sandbox.clear();
+
+      console.log("%cStarted Rendering Sequence \n", 'color: #872190');
+      console.log("%cOutput resolution: " + sandbox.canvas.width.toString() + "x" + sandbox.canvas.height.toString() + "\n", 'color: #5800b1');
+      console.log("%cPasses: " + sandbox.max_passes, 'color: #5800b1');
+      if (rendering) !(sandbox.passes = 0) && (sandbox.loadTime = performance.now()) && RenderLoop();
+    }
+
+    $(document).ready(function() {
+      $('select').material_select();
+      $('.modal').modal();
+
+      $("#intro #stats").html("<b>camera</b> pos: " + sandbox.camera.origin.x.toFixed(3) + ", " + sandbox.camera.origin.y.toFixed(3) + ", " + sandbox.camera.origin.z.toFixed(3) +
+        " | dir: " + sandbox.camera.lookat.x.toFixed(3) + ", " + sandbox.camera.lookat.y.toFixed(3) + ", " + sandbox.camera.lookat.z.toFixed(3) + "<br>" +
+        " fov: " + sandbox.camera.fov + ", aperture: " + sandbox.camera.aperture.toFixed(3) + ", focal length: " + sandbox.camera.focalLength.toFixed(3));
+
+      updateParams({
+        type: 'textarea',
+        id: 'scene',
+        dn_highlight: true,
+        text: $("#scene").val()
+      });
+    });
+  </script>
+</body>
+
+</html>
