@@ -30,7 +30,7 @@ of all browsers.
 ### @ToDo List
 * bump mapping
 * split the main shader into three (**1st** for eye path tracing, **2nd** for light path tracing, **3rd** for merging the paths) to reduce the probability of crashing the driver during compilation.
-* HLBVH support(some work has be done already)
+* HLBVH support(some work has been done already)
 * participating media
 * volumetric SDF
 * functional camera controls
