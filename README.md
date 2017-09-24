@@ -23,7 +23,7 @@ of all browsers.
 * **Reinhard** tone mapping
 * cosine weighted **importance sampling**
 
-[**Demo**](https://mourtz.github.io/raytracer-0/)
+[**Demo**](https://mourtz.github.io/raytracer-0/) (Let it fetch all the required data before hitting the render button!)
 
 ---
 
