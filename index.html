@@ -121,7 +121,7 @@
       <!--   Scene modifier wrapper   -->
       <div id="scene_wrapper">
         Current Scene:<br>
-        <textarea id="scene" oninput='this.style.height = "1px"; this.style.height = this.scrollHeight+"px"; $("#compileBtn").css("background-color", "rgb(255, 0, 0)");'>MAT_TEST, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
+        <textarea id="scene" oninput='this.style.height = "1px"; this.style.height = this.scrollHeight+"px"; $("#compileBtn").css("background-color", "rgb(255, 0, 0)");'>MAT_METAL, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
 MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
       </div>
 
@@ -518,7 +518,7 @@ const lowp int light_index[` + light_indices.length + `] = int[](
       let enabled = [false, false, false];
 
       if (val == 0) { // Default Scene
-        scene_el.value = `MAT_TEST, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
+        scene_el.value = `MAT_METAL, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
 MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)`;
 
         enabled[0] = true;

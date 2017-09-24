@@ -947,7 +947,7 @@ float intersection(in Ray r, out Hit hit){
           if(iSphere(meshes[i], r, tmin, tt))
           {
             tmin = tt;
-            type = SPHERE, i;
+            type = SPHERE;
             hit.index = i;
           }
         } else if(U_PLANE && meshes[i].t == PLANE){

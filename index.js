@@ -40,7 +40,7 @@ const lowp int NUM_SDFS   = 2;
 const lowp int NUM_MODELS = 0;
 
 const Mesh meshes[NUM_MESHES + NUM_SDFS + NUM_MODELS] = Mesh[](
-    Mesh(MAT_TEST, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)),
+    Mesh(MAT_METAL, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)),
     Mesh(MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0))
 );
 
