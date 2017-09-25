@@ -179,23 +179,33 @@ const lowp int light_index[1] = int[](-1);`;
       image.src = opts.textures[i];
     }
 
+    (function () {
+      const targets = [gl.TEXTURE_CUBE_MAP_NEGATIVE_X, gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
+                        gl.TEXTURE_CUBE_MAP_POSITIVE_X, gl.TEXTURE_CUBE_MAP_POSITIVE_Y, gl.TEXTURE_CUBE_MAP_POSITIVE_Z];
 
-    console.log("Loading Cubemap Images...");
-    for (let i = 0; i < opts.cubemap.length; i++) {
-      let image = new Image();
+      let texture = gl.createTexture();
 
-      image.onload = function () {
-        sandbox.images["cubemap_img" + i] = image;
-        if (i === opts.cubemap.length - 1) {
-          console.log("%cLoaded Cubemap Images...", 'color: #27ff00');
+      console.log("Loading Cubemap Images...");
+      for (let i = 0; i < opts.cubemap.length; i++) {
+        let image = new Image();
+
+        image.onload = function () {
+          sandbox.images["cubemap_img" + i] = image;
 
           gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["cubemap"]);
-          sandbox.loadCubemap();
-        }
-      };
+          gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
 
-      image.src = opts.cubemap[i];
-    }
+          gl.texImage2D(targets[i], 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+
+          if (i === opts.cubemap.length - 1) {
+            console.log("%cLoaded Cubemap Images...", 'color: #27ff00');
+            gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+          }
+        };
+
+        image.src = opts.cubemap[i];
+      }
+    })();
 
     //    this.setScene();
 

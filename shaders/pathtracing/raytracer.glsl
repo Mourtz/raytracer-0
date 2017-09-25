@@ -1145,7 +1145,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
   vec3 nl = hit.n * inside;
 
   vec3 _randomDir = getRandomDirection(nl, seed + 7.1*float(u_frame) + 5681.123 + bounce*92.13);
-  vec3 _randomSphereDirection = randomSphereDirection(seed + 12.456*u_time + bounce*136.045);
+//  vec3 _randomSphereDirection = randomSphereDirection(seed + 12.456*u_time + bounce*136.045);
 
   // material e is also used as a glossiness factor
   vec3 _roughness = e * _randomDir;

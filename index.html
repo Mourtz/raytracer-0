@@ -208,7 +208,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     $("#glslViewport canvas").css("width", w_size);
     $("#glslViewport canvas").css("height", w_size);
 
-    let lastDownTarget;
+    let lastDownTarget = undefined;
 
     document.addEventListener('mousedown', function(evt) {
       lastDownTarget = evt.target;
