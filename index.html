@@ -551,6 +551,13 @@ MAT_REFR_CLEAR, SPHERE, vec3(0.0), vec4(0.5)`;
         enabled[1] = false;
         enabled[2] = true;
 
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+
         sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
         sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
         $("#compileBtn").css("background-color", 'rgb(255, 0, 0)');
@@ -652,9 +659,11 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
         text: $("#scene").val()
       });
 
-      try{
+      try {
         sandbox.gl.detachShader(sandbox.frontTarget.program, sandbox.shaders[shaders[1].name]);
-      } catch(e) { console.warn(e.message) };
+      } catch (e) {
+        console.warn(e.message)
+      };
       shaders[1].string = parseShader(shaders[1].filepath, sandbox);
       sandbox.createShader(shaders[1]);
       sandbox.gl.attachShader(sandbox.frontTarget.program, sandbox.shaders[shaders[1].name]);
@@ -713,6 +722,7 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
         text: $("#scene").val()
       });
     });
+
   </script>
 </body>
 

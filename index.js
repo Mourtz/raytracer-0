@@ -143,6 +143,7 @@ const lowp int light_index[1] = int[](-1);`;
 
     let sandbox = this;
 
+    // RGBA noise image
     (function () {
       let image = new Image();
 
@@ -159,26 +160,30 @@ const lowp int light_index[1] = int[](-1);`;
       image.src = "textures/rgba_noise/rgba_noise256.png";
     })();
 
-    console.log("Loading Images...");
-    for (let i = 0; i < opts.textures.length; i++) {
-      let image = new Image();
+    // Images Loader
+    (function () {
+      console.log("Loading Images...");
+      for (let i = 0; i < opts.textures.length; i++) {
+        let image = new Image();
 
-      image.onload = function () {
-        sandbox.images["img" + i] = image;
+        image.onload = function () {
+          sandbox.images["img" + i] = image;
 
-        gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["tex" + i]);
-        sandbox.loadTexture({
-          name: "tex" + i
-        }, image);
+          gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["tex" + i]);
+          sandbox.loadTexture({
+            name: "tex" + i
+          }, image);
 
-        if (i === opts.textures.length - 1) {
-          console.log("%cLoaded Images...", 'color: #27ff00');
-        }
-      };
+          if (i === opts.textures.length - 1) {
+            console.log("%cLoaded Images...", 'color: #27ff00');
+          }
+        };
 
-      image.src = opts.textures[i];
-    }
+        image.src = opts.textures[i];
+      }
+    })();
 
+    // Cubemap Loader
     (function () {
       const targets = [gl.TEXTURE_CUBE_MAP_NEGATIVE_X, gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
                         gl.TEXTURE_CUBE_MAP_POSITIVE_X, gl.TEXTURE_CUBE_MAP_POSITIVE_Y, gl.TEXTURE_CUBE_MAP_POSITIVE_Z];
@@ -200,6 +205,7 @@ const lowp int light_index[1] = int[](-1);`;
           if (i === opts.cubemap.length - 1) {
             console.log("%cLoaded Cubemap Images...", 'color: #27ff00');
             gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            sandbox.pushNewTexture("cubemap", texture);
           }
         };
 
@@ -568,24 +574,6 @@ const lowp int light_index[1] = int[](-1);`;
     }
 
     this.pushNewTexture(opts.name || ("tex" + this.textures.length), texture);
-  }
-
-  loadCubemap() {
-    let gl = this.gl;
-
-    let texture = gl.createTexture();
-
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
-    //put images on cubemap
-    gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_X, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.images.cubemap_img0);
-    gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.images.cubemap_img1);
-    gl.texImage2D(gl.TEXTURE_CUBE_MAP_NEGATIVE_Z, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.images.cubemap_img2);
-    gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_X, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.images.cubemap_img3);
-    gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Y, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.images.cubemap_img4);
-    gl.texImage2D(gl.TEXTURE_CUBE_MAP_POSITIVE_Z, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.images.cubemap_img5);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-
-    this.pushNewTexture("cubemap", texture);
   }
 
   createFramebuffer(opts) {
