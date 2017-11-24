@@ -300,9 +300,9 @@ vec3 voronoi( in vec3 x ){
 
 	float id = 0.0;
     vec2 res = vec2( 100.0 );
-    for( int k=-1; k<=1; k++ )
-    for( int j=-1; j<=1; j++ )
-    for( int i=-1; i<=1; i++ )
+    for( int k=-1; k<=1; ++k )
+    for( int j=-1; j<=1; ++j )
+    for( int i=-1; i<=1; ++i )
     {
         vec3 b = vec3( float(i), float(j), float(k) );
 
@@ -547,7 +547,7 @@ float MengerSponge( vec3 p, vec3 scale){
     float d = sdBox(p, scale);
 
     float s = 1.0;
-    for( int m=0; m<4; m++ )
+    for( int m=0; m<4; ++m )
     {
         vec3 a = mod( p*s, 2.0 )-1.0;
         s *= 3.0;
@@ -572,7 +572,7 @@ float Mandelbulb( vec3 p ){
 	float dz = 1.0;
 
 
-	for( int i=0; i<4; i++ )
+	for( int i=0; i<4; ++i )
   {
 #if 1
         float m2 = m*m;
@@ -618,7 +618,7 @@ vec2 map( vec3 p ){
 #sdf_meshes
 
     vec2 res = sdf_meshes[0];
-    for(int i=1; i< NUM_SDFS; i++){
+    for(int i=1; i< NUM_SDFS; ++i){
       res = mix( sdf_meshes[i], res, float(res.x < sdf_meshes[i].x) );
     }
 
@@ -912,7 +912,7 @@ bool iSDF(in Ray r, in float tmin, out float t, out vec3 n, out int index){
 
     vec2 res;
 
-    for(int i=0; i<MARCHING_STEPS; i++){
+    for(int i=0; i<MARCHING_STEPS; ++i){
         res = map(r.o+r.d*t);
         float h = abs(res.x);
         if( h<EPSILON || t>tmin ) break;
@@ -933,13 +933,13 @@ bool iSDF(in Ray r, in float tmin, out float t, out vec3 n, out int index){
 float intersection(in Ray r, out Hit hit){
     hit = HIT_MISS;
 
-    int type = -1;
+    int type = NULL;
     float tt = INFINITY;
     float tmin = INFINITY;
 
 	//-------- Mesh Intersection --------
     if(U_EUCLIDEAN){
-      for(int i = 0; i < NUM_MESHES; i++)
+      for(int i = 0; i < NUM_MESHES; ++i)
       {
         if(meshes[i].joker.x == 0.0) continue;// continue if not def
 
@@ -1209,14 +1209,14 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
 
     if(h_lights){
 
-      for(int i = 0; i < light_index.length(); i++){
+      for(int i = 0; i < light_index.length(); ++i){
 
         // sample all light sources
         if(sample_lights) acc += mask*calcDirectLighting(meshes[light_index[i]], x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13);
 
 #ifdef USE_BIDIRECTIONAL
 
-          for(int node = 0; node < LIGHT_PATH_LENGTH; node++){
+          for(int node = 0; node < LIGHT_PATH_LENGTH; ++node){
             vec3 lp = lpNodes[i*light_index.length() + node].p - r.o;
             vec3 lpn = normalize( lp );
             vec3 lc = lpNodes[i*light_index.length() + node].c;
@@ -1254,7 +1254,7 @@ void constructLightPath( float seed ) {
   Ray r = Ray(randomSphereDirection(seed + 23.1656), vec3(0.0));
 
   // traverse *Light Sources*
-  for(int i = 0; i < light_index.length(); i++){
+  for(int i = 0; i < light_index.length(); ++i){
     Mesh light = meshes[light_index[i]];
 
     // light ray direction (normal)
@@ -1274,7 +1274,7 @@ void constructLightPath( float seed ) {
     vec3 color = light.mat.e;
 
     // generate all light path nodes for each Light Source
-    for(int node = 0; node < LIGHT_PATH_LENGTH; node++){
+    for(int node = 0; node < LIGHT_PATH_LENGTH; ++node){
       // initialize each node
       lpNodes[i*light_index.length() + node] = NULL_LightPathNode;
 

@@ -52,8 +52,9 @@
       <br>
 
       <div class="input-field col s12">
-        <select onchange='sandbox.resize(Number(this.value));'>
-          <option value="0" selected>256x256</option>
+        <select id="size_select" onchange='sandbox.resize(Number(this.value));'>
+          <option id="default_size" value="-1" disabled selected>Default</option>
+          <option value="0">256x256</option>
           <option value="1">512x512</option>
           <option value="2">1024x1024</option>
           <option value="3">2048x2048</option>
@@ -162,6 +163,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     const cubemap_dir = "Tropical%20Beach";
 
     $("#ff .progress").css("width", w_size);
+    $("#size_select #default_size").html(Math.round(w_size) + "x" + Math.round(w_size));
 
     let shaders = [{
         "name": 'vertex_shader',
@@ -475,7 +477,7 @@ const lowp int light_index[` + light_indices.length + `] = int[](
             sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">Cone</option>");
             sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">MengerSponge</option>");
             sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">Mandelbulb</option>");
-            sdf_html.push("<option value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">(BiDir)Test0</option>");
+            sdf_html.push("<option disabled value='" + ++curr_val + "' " + (curr_val == el ? "selected" : "") + ">(BiDir)Test0</option>");
 
             sdf_html.push("</select>");
             sdf_html.push("</div>");
