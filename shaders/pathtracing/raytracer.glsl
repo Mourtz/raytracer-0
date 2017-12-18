@@ -144,7 +144,7 @@ const struct Material{
 const Material NULL_MAT = Material(vec3(0.0), vec3(0.0), 0.0, -1, NULL_TEX, bvec4(false));
 
 //----- GLASS MATERIALS -----
-const Material MAT_REFR_CLEAR = Material(vec3(1.), vec3(0.0), ior_glass, REFR_FRESNEL, NULL_TEX, bvec4(false));
+const Material MAT_REFR_CLEAR = Material(vec3(1.,0.5,0.), vec3(0.0), ior_glass, REFR_FRESNEL, NULL_TEX, bvec4(false));
 const Material MAT_REFR_CLEAR_2 = Material(vec3(1.), vec3(0.0),ior_glass, REFR_SCHLICK, NULL_TEX, bvec4(false));
 const Material MAT_REFR_SAPPHIRE = Material(vec3(1.), vec3(0.0), ior_sapphire, REFR_FRESNEL, NULL_TEX, bvec4(false));
 const Material MAT_REFR_WATER = Material(vec3(0.25,0.64,0.88), vec3(0.0), ior_water, REFR_FRESNEL, NULL_TEX, bvec4(false));
@@ -1149,7 +1149,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
 
   // material e is also used as a glossiness factor
   vec3 _roughness = e * _randomDir;
-  vec3 _reflDirection = _roughness + normalize(reflect(r.d, nl));
+  vec3 _reflDirection = normalize(_roughness + reflect(r.d, nl));
 
   float nc = ior_air;                   // IOR of air
   float nt = meshes[hit.index].mat.nt;  // IOR of mesh
@@ -1167,16 +1167,24 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == REFR_FRESNEL || meshes[hit.index].mat.t == REFR_SCHLICK){ // REFRACTIVE
     float nnt = inside < 0. ? nt/nc : nc/nt;
-    vec3 tdir = /*_roughness +*/ refract(r.d, nl, nnt);
-
-    float Re = mix(schlick(r, nl, nc, nt), fresnel(r, nl, nc, nt, tdir), meshes[hit.index].mat.t == REFR_FRESNEL);
+    vec3 tdir = normalize(_roughness + refract(r.d, nl, nnt));
 
     r.o = x;
+    mask *= f;
+
+    if(dot(tdir, tdir) == 0.0) {
+      r.d = _reflDirection;
+      if(eyetracing) SPEC_BOUNCES++;
+      return;
+    }
+
+    // select either schlick or fresnel approximation
+    float Re = mix(schlick(r, nl, nc, nt), fresnel(r, nl, nc, nt, tdir), meshes[hit.index].mat.t == REFR_FRESNEL);
+
     if( hash(seed) < Re){
       r.d = _reflDirection;
       if(eyetracing) SPEC_BOUNCES++;
     } else {
-      mask *= f;
       r.d = tdir;
       if(eyetracing) SCATTERING_EVENTS++;
     }
