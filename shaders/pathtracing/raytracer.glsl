@@ -1149,20 +1149,19 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
 
   // material e is also used as a glossiness factor
   vec3 _roughness = e * _randomDir;
-  vec3 _reflDirection = normalize(_roughness + reflect(r.d, nl));
+//  vec3 _reflDirection = normalize(_roughness + reflect(r.d, nl));
 
   float nc = ior_air;                   // IOR of air
   float nt = meshes[hit.index].mat.nt;  // IOR of mesh
 
   if(meshes[hit.index].mat.t == DIFF){ // DIFFUSE
-    r = Ray(x, _randomDir);
+    r = Ray(x + nl*EPSILON, _randomDir);
     mask *= f;
 
     if(eyetracing) DIFF_BOUNCES++;
     bounceIsSpecular = false;
   } else if(meshes[hit.index].mat.t == SPEC){
-    mask *= f;
-    r = Ray( x, _reflDirection);
+    r = Ray( x + nl*EPSILON, normalize(_roughness + reflect(r.d, nl)));
     if(eyetracing) SPEC_BOUNCES++;
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == REFR_FRESNEL || meshes[hit.index].mat.t == REFR_SCHLICK){ // REFRACTIVE
@@ -1170,10 +1169,11 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     vec3 tdir = normalize(_roughness + refract(r.d, nl, nnt));
 
     r.o = x;
-    mask *= f;
 
+    // total internal reflection
     if(dot(tdir, tdir) == 0.0) {
-      r.d = _reflDirection;
+      r.o += nl*EPSILON;
+      r.d = normalize(_roughness + reflect(r.d, nl));
       if(eyetracing) SPEC_BOUNCES++;
       return;
     }
@@ -1182,21 +1182,26 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     float Re = mix(schlick(r, nl, nc, nt), fresnel(r, nl, nc, nt, tdir), meshes[hit.index].mat.t == REFR_FRESNEL);
 
     if( hash(seed) < Re){
-      r.d = _reflDirection;
+      r.o += nl*EPSILON;
+      r.d = normalize(_roughness + reflect(r.d, nl));
       if(eyetracing) SPEC_BOUNCES++;
     } else {
+      r.o -= nl*EPSILON;
+      mask *= f;
       r.d = tdir;
       if(eyetracing) SCATTERING_EVENTS++;
     }
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == COAT){  // COAT
+    r.o += nl*EPSILON;
+
     // choose either specular reflection or diffuse
     if( hash(seed) < schlick(r, nl, nc, nt) ){
-      r = Ray( x, _reflDirection);
+      r.d = normalize(_roughness + reflect(r.d, nl));
       if(eyetracing) SPEC_BOUNCES++;
       bounceIsSpecular = true;
     } else {
-      r = Ray( x, _randomDir );
+      r.d  =_randomDir;
       mask *= f;
 
       if(eyetracing) DIFF_BOUNCES++;
