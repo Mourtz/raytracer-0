@@ -1161,7 +1161,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     if(eyetracing) DIFF_BOUNCES++;
     bounceIsSpecular = false;
   } else if(meshes[hit.index].mat.t == SPEC){
-    r = Ray( x + nl*EPSILON, normalize(_roughness + reflect(r.d, nl)));
+    r = Ray(x + nl*EPSILON, normalize(_roughness + reflect(r.d, nl)));
     if(eyetracing) SPEC_BOUNCES++;
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == REFR_FRESNEL || meshes[hit.index].mat.t == REFR_SCHLICK){ // REFRACTIVE
@@ -1193,7 +1193,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     }
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == COAT){  // COAT
-    r.o += nl*EPSILON;
+    r.o = x + nl*EPSILON;
 
     // choose either specular reflection or diffuse
     if( hash(seed) < schlick(r, nl, nc, nt) ){
