@@ -5,13 +5,13 @@ It is entirely written in Javascript, using the **WebGL2** API to carry out all 
 Is kinda modular, allowing the end user to toggle some basic functionalities like "**un/biased** rendering", "**procedural sky**",
 "next event estimation" and "**Bi-Directional** path tracing".
 
-On low end devices the **GLSL** compiler usually is chocking with the amount of code
-that is passed by the main **fragment** shader making it impossible to run.
+On low end devices, the **GLSL** compiler is usually crashing with the amount of code
+that is being passed by the main **fragment** shader.
 Of course the amount of computational power needed to run the renderer depends on the complexity of the scene.
-On my current system I have a GTX 960m and the driver doesn't crash that regularly, so anything with a floating point of performance of 1.5 GFLOPS and above should be running fine.
+On my current system I have a GTX 960m and the driver doesn't crash that regularly, so any graphics card with 1.5 GFLOPS and above should be running fine.
 
 It seems to be working fine on Windows using Angle, Google Chrome is highly suggested as it gives me the lowest render times among
-of all browsers.
+of all the browsers I 've tested.
 
 ### List of features
 * generative texture mapping
