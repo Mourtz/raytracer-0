@@ -308,8 +308,8 @@ vec3 voronoi( in vec3 x ){
 
 #if 1
 
-        vec3 x = p + b ;
-        vec3 r = vec3( b ) - f + texture( u_rnd_tex, (x.xy+vec2(3.0,1.0)*x.z+0.5)/256.0, -100.0 ).xyz;
+        vec3 hx = p + b ;
+        vec3 r = vec3( b ) - f + texture( u_rnd_tex, (hx.xy+vec2(3.0,1.0)*hx.z+0.5)/256.0, -100.0 ).xyz;
 #else
 
         vec3 r = vec3( b ) - f + gradient_hash( p + b );
@@ -1374,8 +1374,6 @@ vec3 radiance(Ray r, float seed){
 //-----------------------------------------------------
 
 void main(void){
-    vec4 previous = texelFetch(u_bufferA, ivec2(gl_FragCoord.xy), 0);
-
     vec2 st = 2.0 * gl_FragCoord.xy / u_resolution - 1.;
     float aspect = u_resolution.x/u_resolution.y;
 
@@ -1415,5 +1413,5 @@ void main(void){
     if(h_lights) constructLightPath(seed + 465412.12345);
   #endif
 
-    FragColor.rgb = previous.rgb + radiance(r, seed);
+    FragColor.rgb = texelFetch(u_bufferA, ivec2(gl_FragCoord.xy), 0).rgb + radiance(r, seed);
 }

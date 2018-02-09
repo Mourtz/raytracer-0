@@ -77,6 +77,7 @@ const lowp int light_index[1] = int[](-1);`;
 
     gl.getExtension('WEBGL_lose_context');
     gl.getExtension('EXT_color_buffer_float');
+    gl.getExtension('OES_texture_float_linear');
     //    this.debug_shader = gl.getExtension('WEBGL_debug_shaders');
 
     this.gl = gl; // GL Instance
@@ -204,7 +205,7 @@ const lowp int light_index[1] = int[](-1);`;
 
           if (i === opts.cubemap.length - 1) {
             console.log("%cLoaded Cubemap Images...", 'color: #27ff00');
-            gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
             sandbox.pushNewTexture("cubemap", texture);
           }
         };
@@ -221,7 +222,7 @@ const lowp int light_index[1] = int[](-1);`;
     gl.useProgram(this.display.program);
 
     this.display.bufferA_ID = gl.getUniformLocation(this.display.program, "u_bufferA"); // bufferA texture2D
-    this.display.passID = gl.getUniformLocation(this.display.program, "u_frame"); // current frame
+    this.display.contributionID = gl.getUniformLocation(this.display.program, "u_cont"); // current frame
 
     gl.uniform1i(this.display.bufferA_ID, this.frontTarget["uniforms"]["backbuffer"]);
 
@@ -508,8 +509,8 @@ const lowp int light_index[1] = int[](-1);`;
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
 
       gl.texImage2D(
         gl.TEXTURE_2D, // target
@@ -645,8 +646,8 @@ const lowp int light_index[1] = int[](-1);`;
         gl.RGB,
         gl.FLOAT,
         model.buffer);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.uniform1i(gl.getUniformLocation(sandbox.frontTarget.program, "u_model" + i), sandbox.textures.length);
 
@@ -660,8 +661,8 @@ const lowp int light_index[1] = int[](-1);`;
       gl.bindTexture(gl.TEXTURE_2D, indicesTexture);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB32UI, model.indices_s, model.indices_s, 0, gl.RGB_INTEGER, gl.UNSIGNED_INT, model.indices);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
       gl.uniform1i(gl.getUniformLocation(sandbox.frontTarget.program, "u_indices" + i), sandbox.textures.length);
 
@@ -770,7 +771,7 @@ const lowp int light_index[1] = int[](-1);`;
 
     gl.useProgram(this.display.program);
 
-    gl.uniform1i(this.display.passID, this.passes);
+    gl.uniform1f(this.display.contributionID, 1.0 / this.passes);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.textures["front_target_tex"]);

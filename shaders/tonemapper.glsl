@@ -5,8 +5,7 @@ precision mediump float;
 layout(location = 0) out highp vec4 FragColor;
 
 uniform sampler2D u_bufferA;
-uniform int u_frame;
-
+uniform float u_cont;
 
 // gamma correction
 const vec3 gamma = vec3(1./2.2);
@@ -28,7 +27,7 @@ vec3 ACESFilm( vec3 x )
 
 void main(){
 
-  vec3 col = texelFetch( u_bufferA, ivec2(gl_FragCoord.xy), 0 ).rgb / float(u_frame);
+  vec3 col = texelFetch( u_bufferA, ivec2(gl_FragCoord.xy), 0 ).rgb * u_cont;
 
 #if 0
 
