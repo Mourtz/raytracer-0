@@ -43,10 +43,12 @@
           <label for="sample_lights">SAMPLE LIGHTS</label>
         </div>
 
+<!--
         <div>
           <input type="checkbox" id="u_biDirectional" onchange="updateParams(this);" />
           <label for="u_biDirectional">BI-DIRECTIONAL</label>
         </div>
+-->
       </div>
 
       <br>
@@ -633,8 +635,8 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
       $("#u_cubemap").prop('checked', enabled[0]);
 
       // Bi-Directional Pathtracing
-      sandbox.defines[3] = enabled[1] ? "#define USE_BIDIRECTIONAL" : "";
-      $("#u_biDirectional").prop('checked', enabled[1]);
+      // sandbox.defines[3] = enabled[1] ? "#define USE_BIDIRECTIONAL" : "";
+      // $("#u_biDirectional").prop('checked', enabled[1]);
 
       // sample lights
       sandbox.constants[7] = "const bool sample_lights = " + enabled[2] + ";";

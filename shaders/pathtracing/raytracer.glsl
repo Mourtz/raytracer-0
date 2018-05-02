@@ -51,11 +51,11 @@ const mediump float ior_diamond   =   2.417;
 
 // PI & E consts
 const float PI                =   3.1415926535897932384626433832795;
-const float ONE_OVER_PI       =   1.0/PI;
-const float TWO_PI            =   2.0*PI;
-const float FOUR_PI           =   2.0*TWO_PI;
-const float RAD               =   PI/180.0;
-const float E                 =   2.71828182845904524;
+const float ONE_OVER_PI       =   1.5707963267948966192313216916398;
+const float TWO_PI            =   6.283185307179586476925286766559;
+const float FOUR_PI           =   12.566370614359172953850573533118;
+const float RAD               =   0.01745329251994329576923690768489;
+const float E                 =   2.71828182845904523536028747135266;
 
 const lowp int NULL =  -1;
 
@@ -224,9 +224,8 @@ const struct LightPathNode{
 const LightPathNode NULL_LightPathNode = LightPathNode(vec3(0.0), vec3(0.0), vec3(0.0));
 
 // light path nodes
-LightPathNode lpNodes[light_index.length()*LIGHT_PATH_LENGTH];
-
-const bool h_lights = light_index[0] >= 0;
+//LightPathNode lpNodes[light_index.length()*LIGHT_PATH_LENGTH];
+//const bool h_lights = light_index.length() >= 0;
 
 //=========================== RNG ===============================
 
@@ -1074,29 +1073,18 @@ vec3 randomHemisphereDirection(vec3 n, float seed){
 	return dot(dr,n) * dr;
 }
 
-vec3 sampleLight(const Mesh light, float seed){
-
-  if(U_SPHERE && light.t == SPHERE)
-    return light.pos + (randomSphereDirection(seed + 23.1656) * light.joker.x);
-  else if(U_SDF && light.t == SDF)
-    return light.pos + (randomSphereDirection(seed + 78.2358) * light.joker.xyz);
-  else if(U_PLANE && light.t == PLANE)
-    return light.pos*light.joker.x + (1.0-abs(light.pos)*hash(seed + 609.458));
-
-  return vec3(0.0);
-}
-
 vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
 
   Hit hit;
   vec3 dirLight = vec3(0.0);
-  vec3 ld = sampleLight(light, seed + 1235.2286);
-  vec3 srDir = normalize(ld - x);
 
   // Light source with geometry
   if(light.mat.t == LIGHT){
 
     if(U_SPHERE && light.t == SPHERE){
+
+      vec3 ld = light.pos + (randomSphereDirection(seed + 23.1656) * light.joker.x);
+      vec3 srDir = normalize(ld - x);
 
       // cast shadow ray from intersection point
       float t = intersection(Ray(x, srDir), hit);
@@ -1111,6 +1099,9 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
           dirLight += max(mix(mesh.mat.c, hit.texel.rgb, hit.texel.a), 0.001) * mesh.mat.e * weight * max(0.001, dot(srDir, nl));
       }
     } else if(U_SDF && light.t == SDF){
+
+      vec3 ld = light.pos + (randomSphereDirection(seed + 78.2358) * light.joker.xyz);
+      vec3 srDir = normalize(ld - x);
 
       // cast shadow ray from intersection point
       float t = intersection(Ray(x, srDir), hit);
@@ -1220,95 +1211,14 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     }
 #endif
 
-    if(h_lights){
-
+    if(sample_lights){
       for(int i = 0; i < light_index.length(); ++i){
-
-        // sample all light sources
-        if(sample_lights) acc += mask*calcDirectLighting(meshes[light_index[i]], x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13);
-
-#ifdef USE_BIDIRECTIONAL
-
-          for(int node = 0; node < LIGHT_PATH_LENGTH; ++node){
-            vec3 lp = lpNodes[i*light_index.length() + node].p - r.o;
-            vec3 lpn = normalize( lp );
-            vec3 lc = lpNodes[i*light_index.length() + node].c;
-
-            Hit l_hit;
-            float t0 = intersection(r, l_hit);
-
-            if(t0 < length(lp)){
-              float weight =
-                  clamp( dot( lpn, n ), 0.0, 1.)
-                * clamp( dot( -lpn, lpNodes[i].n ), 0., 1.)
-                * clamp(1. / dot(lp, lp), 0., 1.);
-
-              acc += lc * mask * weight / getWeightForPath(DIFF_BOUNCES, i);
-            }
-          }
-#endif
+        acc += calcDirectLighting(meshes[light_index[i]], x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13)*mask;
       }
     }
   }
 
   // mask *= max(0.001, dot(r.d, n)); // cosine weighted importance sampling
-}
-
-//-----------------------------------------------------
-// Light Path
-//-----------------------------------------------------
-
-void constructLightPath( float seed ) {
-
-  vec3 acc = vec3(0.);
-  bool bounceIsSpecular = true;
-
-  Hit hit;
-  Ray r = Ray(randomSphereDirection(seed + 23.1656), vec3(0.0));
-
-  // traverse *Light Sources*
-  for(int i = 0; i < light_index.length(); ++i){
-    Mesh light = meshes[light_index[i]];
-
-    // light ray direction (normal)
-    vec3 temp_n = r.o;
-    // point on the lights surface
-    r.o = light.pos + r.o * light.joker.xyz;
-
-    if(light.mat.t == LIGHT){
-      r.d = getRandomDirection(temp_n, seed + 77256.42568);
-    } else if(light.mat.t == DIR_LIGHT){
-      r.d = getRandomDirection(light.pos, seed + 16896.30058);
-    } else {
-      continue;
-    }
-
-    // light's radiant flux
-    vec3 color = light.mat.e;
-
-    // generate all light path nodes for each Light Source
-    for(int node = 0; node < LIGHT_PATH_LENGTH; ++node){
-      // initialize each node
-      lpNodes[i*light_index.length() + node] = NULL_LightPathNode;
-
-      float t = intersection(r, hit);
-
-      if(t == INFINITY || dot( r.d, hit.n ) >= 0.0) break;
-
-      Mesh mesh = meshes[hit.index];
-      vec3 mC = max(mix(mesh.mat.c, hit.texel.rgb * mesh.mat.tex.c_mask, float(mesh.mat.opts[0])*hit.texel.a), 0.001);
-      vec3 mE = max(mix(mesh.mat.e, hit.texel.rgb * mesh.mat.tex.e_mask, float(mesh.mat.opts[1])*hit.texel.a), 0.001);
-
-      brdf(hit, mC, mE, t, 1.0, r, color, acc, bounceIsSpecular, seed, float(node), false);
-
-      lpNodes[i*light_index.length() + node] = LightPathNode(
-        color,
-        hit.pos,
-        hit.n
-      );
-    }
-  }
-
 }
 
 //-----------------------------------------------------
@@ -1408,10 +1318,5 @@ void main(void){
 
     // primary ray
     Ray r = Ray(u_camPos + randomAperturePos, normalize(focalPoint - randomAperturePos));
-
-  #ifdef USE_BIDIRECTIONAL
-    if(h_lights) constructLightPath(seed + 465412.12345);
-  #endif
-
     FragColor.rgb = texelFetch(u_bufferA, ivec2(gl_FragCoord.xy), 0).rgb + radiance(r, seed);
 }
