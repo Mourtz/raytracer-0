@@ -1129,7 +1129,7 @@ float getWeightForPath( int e, int l ) {
     return float(e + l + 2);
 }
 
-void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout Ray r, inout vec3 mask, inout vec3 acc, inout bool bounceIsSpecular, in float seed, in float bounce, const bool eyetracing){
+void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout Ray r, inout vec3 mask, inout vec3 acc, inout bool bounceIsSpecular, in float seed, in float bounce){
 
   vec3 x = hit.pos;
   vec3 n = hit.n;
@@ -1149,11 +1149,11 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     r = Ray(x + nl*EPSILON, _randomDir);
     mask *= f;
 
-    if(eyetracing) DIFF_BOUNCES++;
+    ++DIFF_BOUNCES;
     bounceIsSpecular = false;
   } else if(meshes[hit.index].mat.t == SPEC){
     r = Ray(x + nl*EPSILON, normalize(_roughness + reflect(r.d, nl)));
-    if(eyetracing) SPEC_BOUNCES++;
+    ++SPEC_BOUNCES;
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == REFR_FRESNEL || meshes[hit.index].mat.t == REFR_SCHLICK){ // REFRACTIVE
     float nnt = inside < 0. ? nt/nc : nc/nt;
@@ -1165,7 +1165,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     if(dot(tdir, tdir) == 0.0) {
       r.o += nl*EPSILON;
       r.d = normalize(_roughness + reflect(r.d, nl));
-      if(eyetracing) SPEC_BOUNCES++;
+      ++SPEC_BOUNCES;
       return;
     }
 
@@ -1175,12 +1175,12 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     if( hash(seed) < Re){
       r.o += nl*EPSILON;
       r.d = normalize(_roughness + reflect(r.d, nl));
-      if(eyetracing) SPEC_BOUNCES++;
+      ++SPEC_BOUNCES;
     } else {
       r.o -= nl*EPSILON;
       mask *= f;
       r.d = tdir;
-      if(eyetracing) SCATTERING_EVENTS++;
+      ++SCATTERING_EVENTS;
     }
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == COAT){  // COAT
@@ -1189,13 +1189,13 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     // choose either specular reflection or diffuse
     if( hash(seed) < schlick(r, nl, nc, nt) ){
       r.d = normalize(_roughness + reflect(r.d, nl));
-      if(eyetracing) SPEC_BOUNCES++;
+      ++SPEC_BOUNCES;
       bounceIsSpecular = true;
     } else {
       r.d  =_randomDir;
       mask *= f;
 
-      if(eyetracing) DIFF_BOUNCES++;
+      ++DIFF_BOUNCES;
       bounceIsSpecular = false;
     }
   }
@@ -1238,13 +1238,14 @@ vec3 radiance(Ray r, float seed){
     float t = intersection(r, hit);
 
     if(t == INFINITY){
-      if(bounceIsSpecular || !sample_lights){
+
+      if(!bounceIsSpecular && sample_lights) break;
+
 #ifdef USE_CUBEMAP
         acc += mask * texture(u_cubemap, r.d).rgb;
 #elif defined (USE_PROCEDURAL_SKY)
-        acc += vec3(0.5) + vec3(0.5) * cos(TWO_PI * (vec3(0.525, 0.408, 0.409) + vec3(0.9, 0.97, 0.8) * clamp(r.d.y * 0.6 + 0.5, 0.3, 1.0)));
+        acc += mask * vec3(0.5) + vec3(0.5) * cos(TWO_PI * (vec3(0.525, 0.408, 0.409) + vec3(0.9, 0.97, 0.8) * clamp(r.d.y * 0.6 + 0.5, 0.3, 1.0)));
 #endif
-      }
 
       break;
     }
@@ -1254,7 +1255,7 @@ vec3 radiance(Ray r, float seed){
     // color
     vec3 c = max(mix(mesh.mat.c, hit.texel.rgb * mesh.mat.tex.c_mask, float(mesh.mat.opts[0])*hit.texel.a), 0.001);
 
-    // 1 if not inside
+    // 1 if outside
     float inside = -sign(dot(r.d, hit.n));
 
     // emission
@@ -1269,7 +1270,7 @@ vec3 radiance(Ray r, float seed){
       break;
     }
 
-    brdf(hit, c, e, t, inside, r, mask, acc, bounceIsSpecular, seed, float(depth), true);
+    brdf(hit, c, e, t, inside, r, mask, acc, bounceIsSpecular, seed, float(depth));
 
     // terminate if necessary
     if( DIFF_BOUNCES      >= MAX_DIFF_BOUNCES   || SPEC_BOUNCES      >= MAX_SPEC_BOUNCES   ||
