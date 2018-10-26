@@ -262,7 +262,7 @@ float gradient_noise( in vec3 p ){
 
 float value_hash(vec3 p){
     p  = fract( p*0.3183099+.1 );
-	  p *= 17.0;
+    p *= 17.0;
     return fract( p.x*p.y*p.z*(p.x+p.y+p.z) );
 }
 
@@ -1012,46 +1012,48 @@ float intersection(in Ray r, out Hit hit){
     return tmin;
 }
 
-// orthogonal vector
-vec3 ortho(vec3 v){
-#if 1
-  return mix(vec3(-v.y, v.x, 0.0), vec3(0.0, -v.z, v.y), step(abs(v.x), abs(v.z)));
-#else
-  return mix(vec3(-v.z, 0.0, v.x), vec3(0.0, v.z, -v.y), step(abs(v.x), abs(v.y)));
-#endif
-}
-
-void calc_binormals(vec3 normal, out vec3 tangent, out vec3 binormal){
-    tangent = normalize(ortho(normal));
-//    tangent = normalize(cross(normal, vec3(0.0,1.0,1.0)));
-//    tangent = normalize( cross( abs(normal.x) > 0.1 ? vec3(0, 1, 0) : vec3(1, 0, 0), normal ) );
-    binormal = cross(normal, tangent);
+/*
+SOURCE: 
+	"Building an Orthonormal Basis from a 3D Unit Vector Without Normalization"
+		http://orbit.dtu.dk/files/126824972/onb_frisvad_jgt2012_v2.pdf
+		
+	"Building an Orthonormal Basis, Revisited" 
+		http://jcgt.org/published/0006/01/01/
+*/
+void calc_binormals(vec3 n, out vec3 ox, out vec3 oz){
+	float sig = n.z < 0.0 ? 1.0 : -1.0;
+	
+	float a = 1.0 / (n.z - sig);
+	float b = n.x * n.y * a;
+	
+	ox = vec3(1.0 + sig * n.x * n.x * a, sig * b, sig * n.x);
+	oz = vec3(b, sig + n.y * n.y * a, n.y);
 }
 
 vec3 getSampleBiased(vec3 w, float power, float seed){
-    vec3 u, v;
-    calc_binormals(w, u ,v);
+  vec3 u, v;
+  calc_binormals(w, u ,v);
 
-	// Convert to spherical coords aligned to dir
-	vec2 r = hash2(vec2(seed));
-	r.x = r.x * TWO_PI;
-	r.y = pow(r.y, 1.0 / (power + 1.0));
+  // Convert to spherical coords aligned to dir
+  vec2 r = hash2(vec2(seed));
+  r.x = r.x * TWO_PI;
+  r.y = pow(r.y, 1.0 / (power + 1.0));
 
-	float oneminus = sqrt(1.0 - r.y * r.y);
-	return normalize(cos(r.x) * oneminus * u + sin(r.x) * oneminus * v + r.y * w);
+  float oneminus = sqrt(1.0 - r.y * r.y);
+  return normalize(cos(r.x) * oneminus * u + sin(r.x) * oneminus * v + r.y * w);
 }
 
 vec3 getConeSample(vec3 w, float extent, float seed){
-    vec3 u, v;
-    calc_binormals(w, u ,v);
+  vec3 u, v;
+  calc_binormals(w, u ,v);
 
-	// Convert to spherical coords aligned to dir
-	vec2 r = hash2(vec2(seed));
-	r.x = r.x * TWO_PI;
-	r.y = 1.0 - r.y * extent;
+  // Convert to spherical coords aligned to dir
+  vec2 r = hash2(vec2(seed));
+  r.x = r.x * TWO_PI;
+  r.y = 1.0 - r.y * extent;
 
-	float oneminus = sqrt(1.0 - r.y * r.y);
-	return normalize(cos(r.x) * oneminus * u + sin(r.x) * oneminus * v + r.y * w);
+  float oneminus = sqrt(1.0 - r.y * r.y);
+  return normalize(cos(r.x) * oneminus * u + sin(r.x) * oneminus * v + r.y * w);
 }
 
 vec3 getRandomDirection(vec3 n, float seed){
@@ -1062,7 +1064,6 @@ vec3 getRandomDirection(vec3 n, float seed){
 #endif
 }
 
-// thanks to @reinder
 vec3 randomSphereDirection(float seed){
 	vec2 r = hash2(vec2(seed))*TWO_PI;
     return vec3(sin(r.x)*vec2(sin(r.y),cos(r.y)),cos(r.x));
@@ -1123,10 +1124,6 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
   }
 
   return dirLight;
-}
-
-float getWeightForPath( int e, int l ) {
-    return float(e + l + 2);
 }
 
 void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout Ray r, inout vec3 mask, inout vec3 acc, inout bool bounceIsSpecular, in float seed, in float bounce){
@@ -1290,7 +1287,7 @@ void main(void){
 
     float seed = hash(dot( gl_FragCoord.xy, vec2(12.9898, 78.233) ) + 1113.1*float(u_frame));
 
-	//camera setup
+    //camera setup
     float theta = u_camParams.x*RAD;
     float uVLen = tan(theta/2.);
     float uULen = aspect * uVLen;
