@@ -117,6 +117,7 @@
       <!-- Clear --><a class="waves-effect waves-light btn" onclick="rendering=false; sandbox.clear();">Clear</a>
       <!-- Render --><a class="waves-effect waves-light btn" id="renderBtn" onclick="draw();">Render</a>
       <!-- Compile --><a class="waves-effect waves-light btn" id="compileBtn" onclick="recompile()">Compile</a>
+      <!-- Live --><a class="waves-effect waves-light btn" id="liveBtn" onclick="updateParams(this);">Live</a>
       <!-- Controls --><a class="waves-effect waves-light btn modal-trigger" id="infoBtn" href="#modal1">Controls</a>
     </div>
 
@@ -342,10 +343,13 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     }, false);
 
     let rendering = false;
-
+    let is_live = false;
     function updateParams(el) {
 
-      if (el.type == "range") {
+      if(el.id == "liveBtn"){
+        is_live = !is_live;
+        $("#liveBtn").css("background-color", is_live ? "rgb(255, 0, 0)" : "rgb(105, 105, 105)");
+      } else if (el.type == "range") {
         if (el.id === "passes") {
           sandbox.max_passes = el.value;
           return;
@@ -514,7 +518,11 @@ const lowp int light_index[` + light_indices.length + `] = int[](
       }
 
       rendering = false;
-      if (!el.dn_highlight) $("#compileBtn").css("background-color", 'rgb(255, 0, 0)');
+      if (el.dn_highlight == false){
+        $("#compileBtn").css("background-color", 'rgb(255, 0, 0)');
+        is_live = false;
+        $("#liveBtn").css("background-color", is_live ? "rgb(255, 0, 0)" : "rgb(105, 105, 105)");
+      } 
       sandbox.clear();
       sandbox.passes = 0;
     }
@@ -690,15 +698,19 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
       // tile rendering
       if (sandbox.tile_rendering && sandbox.tile_size != 0 && sandbox.passes >= sandbox.max_passes) sandbox.updateTile();
 
-      if (rendering && sandbox.passes < sandbox.max_passes) {
-        let progress = Math.round(100 * sandbox.passes / sandbox.max_passes);
-        $("#ff .progress .determinate").css("width", progress + '%');
-        !console.log("%cProgress: ", 'color: #00ff14', progress + '% (' + t + 's)') && window.requestAnimFrame(RenderLoop);
+      if(is_live){
+        window.requestAnimFrame(RenderLoop)
       } else {
-        !console.log("%cStopped!", 'color: #ff0000') && console.log("%cTotal time: " + t + " s,\nPasses: " + sandbox.passes, 'color: #0096FF');
-        rendering = false;
-        $("#ff .progress .determinate").css("width", 0 + '%');
-        document.getElementById("renderBtn").innerHTML = "RENDER";
+        if (rendering && sandbox.passes < sandbox.max_passes) {
+          let progress = Math.round(100 * sandbox.passes / sandbox.max_passes);
+          $("#ff .progress .determinate").css("width", progress + '%');
+          !console.log("%cProgress: ", 'color: #00ff14', progress + '% (' + t + 's)') && window.requestAnimFrame(RenderLoop);
+        } else {
+          !console.log("%cStopped!", 'color: #ff0000') && console.log("%cTotal time: " + t + " s,\nPasses: " + sandbox.passes, 'color: #0096FF');
+          rendering = false;
+          $("#ff .progress .determinate").css("width", 0 + '%');
+          document.getElementById("renderBtn").innerHTML = "RENDER";
+        }
       }
     }
 

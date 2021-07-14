@@ -81,6 +81,11 @@ body {
   width: 98%;
 }
 
+#settings #liveBtn {
+  background-color: rgb(105, 105, 105);
+  width: 98%;
+}
+
 #modal1 .modal-content,
 #modal1 .modal-footer {
   background-color: #50834a;

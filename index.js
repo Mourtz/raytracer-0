@@ -732,7 +732,7 @@ const lowp int light_index[1] = int[](-1);`;
       empty_tex // pixels
     );
 
-    gl.bindTexture(gl.TEXTURE_2D, this.textures["back_target_tex"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["front_target_tex"]);
     gl.texImage2D(
       gl.TEXTURE_2D, // target
       0, // level
