@@ -446,6 +446,7 @@ const lowp int light_index[1] = int[](-1);`;
       color: [gl.RGBA32F, gl.RGBA],
       type: gl.FLOAT
     });
+    gl.bindTexture(gl.TEXTURE_2D, null);
 
     gl.clear(gl.COLOR_BUFFER_BIT);
 
