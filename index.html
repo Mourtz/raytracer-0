@@ -209,6 +209,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     document.addEventListener("loaded_all_asets", function() {
       document.getElementById("ff").attributes.removeNamedItem("hidden");
       $("#intro h4").html("WebGL Pathtracer");
+      size_select(-1);
     });
 
     // @mrdoob stats.js
