@@ -11,10 +11,10 @@
 
 <body>
   <div id="intro">
-    <h4>WebGL 2 Path Tracer</h4>
+    <h4>Loading...</h4>
     <div id="stats"></div>
   </div>
-  <div id="ff">
+  <div id="ff" hidden>
     <div class="progress">
       <div class="determinate" style="width: 0%"></div>
     </div>
@@ -54,7 +54,7 @@
       <br>
 
       <div class="input-field col s12">
-        <select id="size_select" onchange='sandbox.resize(Number(this.value));'>
+        <select id="size_select" onchange='size_select(Number(this.value));'>
           <option id="default_size" value="-1" disabled selected>Default</option>
           <option value="0">256x256</option>
           <option value="1">512x512</option>
@@ -204,6 +204,11 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
       max_passes: 64,
       paused: false,
       preserveDrawingBuffer: false
+    });
+
+    document.addEventListener("loaded_all_asets", function() {
+      document.getElementById("ff").attributes.removeNamedItem("hidden");
+      $("#intro h4").html("WebGL Pathtracer");
     });
 
     // @mrdoob stats.js
@@ -525,6 +530,10 @@ const lowp int light_index[` + light_indices.length + `] = int[](
       } 
       sandbox.clear();
       sandbox.passes = 0;
+    }
+
+    function size_select(val) {
+      sandbox.resize(val);
     }
 
     function scene_select(val) {

@@ -6,3 +6,4 @@ gpurt.js
 .atom-live-server.json
 /shaders/pathtracing/MIS.glsl
 /models/Stanford/Happy Buddha.obj
+cubemaps

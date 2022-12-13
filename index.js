@@ -142,6 +142,8 @@ const lowp int light_index[1] = int[](-1);`;
     //    this.genRandomTexture();
     //    gl.activeTexture(gl.TEXTURE0);
 
+    this.loaded_all_asets_event = new Event('loaded_all_asets');
+
     let sandbox = this;
 
     // RGBA noise image
@@ -162,7 +164,7 @@ const lowp int light_index[1] = int[](-1);`;
     })();
 
     // Images Loader
-    (function () {
+    let load_images = new Promise(function (resolve, reject) {
       console.log("Loading Images...");
       for (let i = 0; i < opts.textures.length; i++) {
         let image = new Image();
@@ -176,18 +178,19 @@ const lowp int light_index[1] = int[](-1);`;
           }, image);
 
           if (i === opts.textures.length - 1) {
-            console.log("%cLoaded Images...", 'color: #27ff00');
+            resolve();
           }
         };
 
         image.src = opts.textures[i];
       }
-    })();
+    });
 
-    // Cubemap Loader
-    (function () {
+
+
+    let load_cubemap = new Promise(function (resolve, reject) {
       const targets = [gl.TEXTURE_CUBE_MAP_NEGATIVE_X, gl.TEXTURE_CUBE_MAP_NEGATIVE_Y, gl.TEXTURE_CUBE_MAP_NEGATIVE_Z,
-                        gl.TEXTURE_CUBE_MAP_POSITIVE_X, gl.TEXTURE_CUBE_MAP_POSITIVE_Y, gl.TEXTURE_CUBE_MAP_POSITIVE_Z];
+      gl.TEXTURE_CUBE_MAP_POSITIVE_X, gl.TEXTURE_CUBE_MAP_POSITIVE_Y, gl.TEXTURE_CUBE_MAP_POSITIVE_Z];
 
       let texture = gl.createTexture();
 
@@ -204,15 +207,25 @@ const lowp int light_index[1] = int[](-1);`;
           gl.texImage2D(targets[i], 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
 
           if (i === opts.cubemap.length - 1) {
-            console.log("%cLoaded Cubemap Images...", 'color: #27ff00');
             gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
             sandbox.pushNewTexture("cubemap", texture);
+            resolve();
           }
         };
 
         image.src = opts.cubemap[i];
       }
-    })();
+    });
+
+    load_images.then(function () {
+      console.log("%cLoaded Images...", 'color: #27ff00');
+    }).then(load_cubemap).then(function () {
+      console.log("%cLoaded Cubemap...", 'color: #27ff00');
+    }). then(function () {
+      console.log("%cLoaded All Textures...", 'color: #27ff00');
+      document.dispatchEvent(sandbox.loaded_all_asets_event);
+    });
+
 
     //    this.setScene();
 
@@ -383,7 +396,7 @@ const lowp int light_index[1] = int[](-1);`;
     let context = undefined;
     try {
       context = this.canvas.getContext('webgl2', optAttribs);
-    } catch (e) {}
+    } catch (e) { }
     return context;
   }
 
