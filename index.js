@@ -142,8 +142,6 @@ const lowp int light_index[1] = int[](-1);`;
     //    this.genRandomTexture();
     //    gl.activeTexture(gl.TEXTURE0);
 
-    this.loaded_all_asets_event = new Event('loaded_all_asets');
-
     let sandbox = this;
 
     // RGBA noise image
@@ -151,13 +149,14 @@ const lowp int light_index[1] = int[](-1);`;
       let image = new Image();
 
       image.onload = function () {
-        sandbox.images["rnd_img"] = image;
+        createImageBitmap(image).then(function (bitmap) {
+          sandbox.images["rnd_img"] = bitmap;
 
-        gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["rng_tex"]);
-        sandbox.loadTexture({
-          name: "rnd_tex"
-        }, image);
-
+          gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["rng_tex"]);
+          sandbox.loadTexture({
+            name: "rnd_tex"
+          }, bitmap);
+        });
       };
 
       image.src = "textures/rgba_noise/rgba_noise256.png";
@@ -170,16 +169,18 @@ const lowp int light_index[1] = int[](-1);`;
         let image = new Image();
 
         image.onload = function () {
-          sandbox.images["img" + i] = image;
+          createImageBitmap(image).then(function (bitmap) {
+            sandbox.images["img" + i] = bitmap;
 
-          gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["tex" + i]);
-          sandbox.loadTexture({
-            name: "tex" + i
-          }, image);
+            gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["tex" + i]);
+            sandbox.loadTexture({
+              name: "tex" + i
+            }, bitmap);
 
-          if (i === opts.textures.length - 1) {
-            resolve();
-          }
+            if (i === opts.textures.length - 1) {
+              resolve();
+            }
+          });
         };
 
         image.src = opts.textures[i];
@@ -199,18 +200,20 @@ const lowp int light_index[1] = int[](-1);`;
         let image = new Image();
 
         image.onload = function () {
-          sandbox.images["cubemap_img" + i] = image;
+          createImageBitmap(image).then(function (bitmap) {
+            sandbox.images["cubemap_img" + i] = bitmap;
 
-          gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["cubemap"]);
-          gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
+            gl.activeTexture(gl.TEXTURE0 + sandbox.frontTarget["uniforms"]["cubemap"]);
+            gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
 
-          gl.texImage2D(targets[i], 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
+            gl.texImage2D(targets[i], 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, bitmap);
 
-          if (i === opts.cubemap.length - 1) {
-            gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-            sandbox.pushNewTexture("cubemap", texture);
-            resolve();
-          }
+            if (i === opts.cubemap.length - 1) {
+              gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+              sandbox.pushNewTexture("cubemap", texture);
+              resolve();
+            }
+          });
         };
 
         image.src = opts.cubemap[i];
@@ -221,13 +224,10 @@ const lowp int light_index[1] = int[](-1);`;
       console.log("%cLoaded Images...", 'color: #27ff00');
     }).then(load_cubemap).then(function () {
       console.log("%cLoaded Cubemap...", 'color: #27ff00');
-    }). then(function () {
+    }).then(function () {
       console.log("%cLoaded All Textures...", 'color: #27ff00');
-      document.dispatchEvent(sandbox.loaded_all_asets_event);
+      document.dispatchEvent(new Event('textures_loaded'));
     });
-
-
-    //    this.setScene();
 
     //---------------------------- DISPLAY PROGRAM
 
