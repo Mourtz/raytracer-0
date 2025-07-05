@@ -114,11 +114,20 @@
         <input type="range" id="max_scatter" min="1" max="24" value="12" onchange="updateParams(this);" />
       </p>
 
-      <!-- Clear --><a class="waves-effect waves-light btn" onclick="rendering=false; sandbox.clear();">Clear</a>
-      <!-- Render --><a class="waves-effect waves-light btn" id="renderBtn" onclick="draw();">Render</a>
-      <!-- Compile --><a class="waves-effect waves-light btn" id="compileBtn" onclick="recompile()">Compile</a>
-      <!-- Live --><a class="waves-effect waves-light btn" id="liveBtn" onclick="updateParams(this);">Live</a>
-      <!-- Controls --><a class="waves-effect waves-light btn modal-trigger" id="infoBtn" href="#modal1">Controls</a>
+      <!-- Button Groups -->
+      <div class="button-row">
+        <a class="waves-effect waves-light btn" onclick="rendering=false; sandbox.clear();">Clear</a>
+        <a class="waves-effect waves-light btn" id="renderBtn" onclick="draw();">Render</a>
+      </div>
+      
+      <div class="button-row">
+        <a class="waves-effect waves-light btn" id="compileBtn" onclick="recompile()">Compile</a>
+        <a class="waves-effect waves-light btn" id="liveBtn" onclick="updateParams(this);">Live</a>
+      </div>
+      
+      <div class="button-row">
+        <a class="waves-effect waves-light btn modal-trigger" id="infoBtn" href="#modal1">Controls</a>
+      </div>
     </div>
 
     <div>

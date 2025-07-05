@@ -1,5 +1,7 @@
 body {
-  background: #004d40;
+  background: linear-gradient(-45deg, #0d1117, #161b22, #21262d, #30363d);
+  background-size: 400% 400%;
+  animation: gradientShift 15s ease infinite;
   position: absolute;
   left: 0;
   top: 0;
@@ -7,16 +9,85 @@ body {
   margin: 0;
   width: 80%;
   left: 10%;
-  color: floralwhite;
+  color: #e6edf3;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 100vh;
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Add floating particles animation */
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image: 
+    radial-gradient(2px 2px at 20px 30px, rgba(255, 255, 255, 0.1), transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255, 255, 255, 0.05), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgba(255, 255, 255, 0.08), transparent),
+    radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.03), transparent),
+    radial-gradient(2px 2px at 160px 30px, rgba(255, 255, 255, 0.06), transparent);
+  background-repeat: repeat;
+  background-size: 200px 100px;
+  animation: particleFloat 20s linear infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes particleFloat {
+  0% {
+    transform: translateY(0px);
+  }
+  100% {
+    transform: translateY(-100px);
+  }
 }
 
 #ff {
   position: relative;
   margin-top: 2%;
+  background: rgba(13, 17, 23, 0.8);
+  border-radius: 12px;
+  padding: 20px;
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
 #ff .progress {
   margin: 0;
+  background-color: rgba(48, 54, 61, 0.6);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+#ff .progress .determinate {
+  background: linear-gradient(90deg, #7c3aed, #a855f7, #c084fc);
+  background-size: 200% 100%;
+  animation: progressGlow 2s ease-in-out infinite;
+}
+
+@keyframes progressGlow {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 #intro {
@@ -24,21 +95,32 @@ body {
   margin-top: 1px;
   text-align: center;
   position: relative;
+  background: rgba(13, 17, 23, 0.9);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+#intro h4 {
+  color: #58a6ff;
+  font-weight: 300;
+  text-shadow: 0 0 10px rgba(88, 166, 255, 0.3);
 }
 
 #glslViewport {
   display: inline-block;
-  /* checkerboard http://snipplr.com/view/65431/ */
-  background-color: #FEFEFE;
-  background-image: -webkit-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -webkit-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
-  background-image: -moz-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -moz-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
-  background-image: -o-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -o-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
-  background-image: -ms-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), -ms-linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
-  background-image: linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB), linear-gradient(45deg, #CBCBCB 25%, transparent 25%, transparent 75%, #CBCBCB 75%, #CBCBCB);
-  -webkit-background-size: 10px 10px;
-  -moz-background-size: 10px 10px;
+  /* Dark checkerboard pattern */
+  background-color: #21262d;
+  background-image: 
+    linear-gradient(45deg, #30363d 25%, transparent 25%, transparent 75%, #30363d 75%, #30363d), 
+    linear-gradient(45deg, #30363d 25%, transparent 25%, transparent 75%, #30363d 75%, #30363d);
   background-size: 10px 10px;
-  background-position: 0 0, 15px 15px;
+  background-position: 0 0, 5px 5px;
+  border-radius: 8px;
+  padding: 10px;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
 }
 
 #settings {
@@ -47,14 +129,129 @@ body {
   margin-top: -30px;
   margin-left: 5%;
   width: 39%;
+  background: rgba(13, 17, 23, 0.8);
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+#settings h4 {
+  text-align: center;
+  color: #58a6ff;
+  font-weight: 300;
+  margin-bottom: 20px;
+}
+
+#settings .range-field {
+  margin: 15px 0;
+}
+
+#settings .range-field:last-of-type {
+  margin-bottom: 25px;
+}
+
+#settings .range-field label {
+  color: #7d8590;
+  font-size: 0.9em;
+}
+
+#settings input[type="range"] {
+  background: rgba(48, 54, 61, 0.6);
+  border-radius: 4px;
+}
+
+#settings input[type="range"]::-webkit-slider-thumb {
+  background: #58a6ff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
+}
+
+#settings input[type="range"]::-moz-range-thumb {
+  background: #58a6ff;
+  border-radius: 50%;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
+  border: none;
+}
+
+#settings select {
+  background-color: rgba(48, 54, 61, 0.8);
+  color: #e6edf3;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  border-radius: 4px;
+}
+
+#settings .select-wrapper input.select-dropdown {
+  background-color: rgba(48, 54, 61, 0.8);
+  color: #e6edf3;
+  border-bottom: 1px solid rgba(88, 166, 255, 0.3);
+}
+
+#settings .dropdown-content {
+  background-color: #21262d;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+#settings .dropdown-content li > a,
+#settings .dropdown-content li > span {
+  color: #e6edf3;
+}
+
+#settings .dropdown-content li:hover {
+  background-color: rgba(48, 54, 61, 0.8);
+}
+
+#settings .dropdown-content li.selected {
+  background-color: rgba(88, 166, 255, 0.2);
 }
 
 #settings #checkboxes div {
   display: inline-block;
+  margin-right: 15px;
+  margin-bottom: 10px;
 }
 
 #settings #checkboxes div label {
-  padding-left: 20px;
+  padding-left: 30px;
+  color: #e6edf3;
+  font-size: 0.9em;
+  position: relative;
+}
+
+#settings #checkboxes div label::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 18px;
+  height: 18px;
+  background: rgba(48, 54, 61, 0.8);
+  border: 2px solid rgba(88, 166, 255, 0.3);
+  border-radius: 3px;
+  transition: all 0.3s ease;
+}
+
+#settings #checkboxes div input[type="checkbox"]:checked + label::before {
+  background: #58a6ff;
+  border-color: #58a6ff;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.4);
+}
+
+#settings #checkboxes div input[type="checkbox"]:checked + label::after {
+  content: '✓';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  color: white;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+#settings #checkboxes div input[type="checkbox"] {
+  opacity: 0;
+  position: absolute;
 }
 
 #settings h4 {
@@ -66,44 +263,140 @@ body {
 }
 
 #settings .btn {
-  margin-top: 1.5%;
-  margin-left: 1%;
-  width: 48%;
+  display: inline-block;
+  margin: 8px 4px;
+  width: calc(48% - 8px);
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: white !important;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  vertical-align: top;
 }
 
-#settings #infoBtn {
-  background-color: green;
-  width: 98%;
+#settings .btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4);
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: white !important;
+}
+
+#settings .btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+#settings #renderBtn {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+}
+
+#settings #renderBtn:hover {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
 }
 
 #settings #compileBtn {
-  background-color: rgb(105, 105, 105);
-  width: 98%;
+  background: linear-gradient(135deg, #6b7280, #9ca3af);
+  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+}
+
+#settings #compileBtn:hover {
+  background: linear-gradient(135deg, #4b5563, #6b7280);
 }
 
 #settings #liveBtn {
-  background-color: rgb(105, 105, 105);
-  width: 98%;
+  background: linear-gradient(135deg, #6b7280, #9ca3af);
+  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.3);
+}
+
+#settings #liveBtn:hover {
+  background: linear-gradient(135deg, #4b5563, #6b7280);
+}
+
+#settings #infoBtn {
+  background: linear-gradient(135deg, #059669, #10b981);
+  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+  width: calc(100% - 8px);
+  margin: 8px 4px;
+}
+
+#settings #infoBtn:hover {
+  background: linear-gradient(135deg, #047857, #059669);
+  box-shadow: 0 6px 20px rgba(5, 150, 105, 0.4);
+}
+
+/* Button container to better organize the layout */
+#settings .button-row {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+#settings .button-row .btn {
+  flex: 1;
+  margin: 0;
 }
 
 #modal1 .modal-content,
 #modal1 .modal-footer {
-  background-color: #50834a;
+  background-color: #21262d;
+  color: #e6edf3;
+  border-radius: 8px;
+}
+
+#modal1 .modal-content {
+  border-bottom: 1px solid rgba(48, 54, 61, 0.5);
+}
+
+#modal1 .modal-footer .btn-flat {
+  color: #58a6ff;
+}
+
+#modal1 .modal-footer .btn-flat:hover {
+  background-color: rgba(88, 166, 255, 0.1);
 }
 
 #scene_wrapper {
   display: inline-block;
   width: 50%;
+  background: rgba(13, 17, 23, 0.8);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  margin-top: 20px;
 }
 
 #scene {
   display: inline-block;
-  background-color: black;
-  font-family: monospace;
+  background-color: #0d1117;
+  color: #e6edf3;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
   resize: none;
   overflow: hidden;
   margin-top: 10px;
-  border-radius: 5px;
+  border-radius: 8px;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  padding: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+#scene:focus {
+  outline: none;
+  border-color: #58a6ff;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.3);
 }
 
 #sdf_meshes {
@@ -111,4 +404,81 @@ body {
   vertical-align: top;
   margin-left: 2%;
   width: 47%;
+  background: rgba(13, 17, 23, 0.8);
+  border-radius: 12px;
+  padding: 15px;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+  margin-top: 20px;
+}
+
+/* Additional dark theme improvements */
+.input-field label {
+  color: #7d8590 !important;
+}
+
+.input-field label.active {
+  color: #58a6ff !important;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(48, 54, 61, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(88, 166, 255, 0.6);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(88, 166, 255, 0.8);
+}
+
+/* Materialize framework overrides */
+.waves-effect.waves-light .waves-ripple {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+
+.btn, .btn-large, .btn-small {
+  text-decoration: none;
+  color: #fff !important;
+  background-color: transparent;
+  text-align: center;
+  letter-spacing: .5px;
+  transition: background-color .2s ease-out;
+  cursor: pointer;
+  border: none;
+  border-radius: 2px;
+  display: inline-block;
+  height: 36px;
+  line-height: 36px;
+  padding: 0 16px;
+  text-transform: uppercase;
+  vertical-align: middle;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Override any conflicting Materialize styles */
+#settings .btn {
+  height: auto !important;
+  line-height: 1.2 !important;
+  padding: 12px 16px !important;
+}
+
+/* Fix button text color specifically */
+#settings .btn,
+#settings .btn:visited,
+#settings .btn:focus {
+  color: white !important;
+}
+
+/* Ensure button container doesn't interfere */
+#settings .button-row {
+  width: 100%;
+  box-sizing: border-box;
 }
