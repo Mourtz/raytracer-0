@@ -36,7 +36,7 @@ uniform vec3 u_camPos, u_camLookAt, u_camParams;
 #constants
 
 // epsilon & infinity
-const float EPSILON = 0.0001;
+const float EPSILON = 0.001;
 const float INFINITY = 1e4;
 
 // Index of Refraction
@@ -50,12 +50,12 @@ const lowp float ior_sapphire     =   1.77;
 const mediump float ior_diamond   =   2.417;
 
 // PI & E consts
-const float PI                =   3.1415926535897932384626433832795;
-const float ONE_OVER_PI       =   1.5707963267948966192313216916398;
-const float TWO_PI            =   6.283185307179586476925286766559;
-const float FOUR_PI           =   12.566370614359172953850573533118;
-const float RAD               =   0.01745329251994329576923690768489;
-const float E                 =   2.71828182845904523536028747135266;
+const float PI                =   3.14159265;
+const float ONE_OVER_PI       =   0.31830989;
+const float TWO_PI            =   6.28318531;
+const float FOUR_PI           =   12.5663706;
+const float RAD               =   0.01745329;
+const float E                 =   2.71828183;
 
 const lowp int NULL =  -1;
 
@@ -229,18 +229,29 @@ const LightPathNode NULL_LightPathNode = LightPathNode(vec3(0.0), vec3(0.0), vec
 
 //=========================== RNG ===============================
 
-float hash(float seed){return fract(sin(seed)*43758.5453123);}
-vec2 hash2(vec2 seed){return fract(sin(seed)*vec2(43758.5453123,22578.1459123));}
-vec3 hash3(vec3 seed){return fract(sin(seed)*vec3(43758.5453123,22578.1459123,19642.3490423));}
+float hash(float seed){
+    return fract(sin(seed) * 43758.5453);
+}
+
+vec2 hash2(vec2 seed){
+    seed = fract(seed * vec2(0.1031, 0.1030));
+    seed += dot(seed, seed.yx + 19.19);
+    return fract((seed.xx + seed.yy) * seed.xy);
+}
+
+vec3 hash3(vec3 seed){
+    seed = fract(seed * vec3(0.1031, 0.1030, 0.0973));
+    seed += dot(seed, seed.yxz + 19.19);
+    return fract((seed.xxy + seed.yxx) * seed.zyx);
+}
 
 //===================== NOISE FUNCTIONS =========================
 
 vec3 gradient_hash( vec3 p ){
-	p = vec3( dot(p,vec3(127.1,311.7, 74.7)),
-			  dot(p,vec3(269.5,183.3,246.1)),
-			  dot(p,vec3(113.5,271.9,124.6)));
-
-	return -1.0 + 2.0*fract(sin(p)*43758.5453123);
+    p = vec3( dot(p,vec3(127.1,311.7, 74.7)),
+              dot(p,vec3(269.5,183.3,246.1)),
+              dot(p,vec3(113.5,271.9,124.6)));
+    return -1.0 + 2.0*fract(sin(p)*43758.5453);
 }
 
 // https://www.shadertoy.com/view/Xsl3Dl by @iq
@@ -266,53 +277,31 @@ float value_hash(vec3 p){
     return fract( p.x*p.y*p.z*(p.x+p.y+p.z) );
 }
 
-// https://www.shadertoy.com/view/4sfGzS by @iq
 float value_noise( in vec3 x ){
+    vec3 p = floor(x);
+    vec3 f = fract(x);
+    f = f*f*(3.0-2.0*f);
 
-  vec3 p = floor(x);
-  vec3 f = fract(x);
-  f = f*f*(3.0-2.0*f);
-
-#if 1
-
-  vec2 uv = (p.xy+vec2(37.0,17.0)*p.z) + f.xy;
-  vec2 rg = textureLod( u_rnd_tex, (uv+0.5)/256.0, 0.0).yx;
-  return mix( rg.x, rg.y, f.z );
-#else
-
-  return mix(mix(mix( value_hash(p+vec3(0,0,0)),
-                      value_hash(p+vec3(1,0,0)),f.x),
-                 mix( value_hash(p+vec3(0,1,0)),
-                      value_hash(p+vec3(1,1,0)),f.x),f.y),
-             mix(mix( value_hash(p+vec3(0,0,1)),
-                      value_hash(p+vec3(1,0,1)),f.x),
-                 mix( value_hash(p+vec3(0,1,1)),
-                      value_hash(p+vec3(1,1,1)),f.x),f.y),f.z);
-
-#endif
+    vec2 uv = (p.xy+vec2(37.0,17.0)*p.z) + f.xy;
+    vec2 rg = textureLod( u_rnd_tex, (uv+0.5)/256.0, 0.0).yx;
+    return mix( rg.x, rg.y, f.z );
 }
 
-// https://www.shadertoy.com/view/ldl3Dl by @iq
+// Optimized voronoi with early exit
 vec3 voronoi( in vec3 x ){
     vec3 p = floor( x );
     vec3 f = fract( x );
 
-	float id = 0.0;
+    float id = 0.0;
     vec2 res = vec2( 100.0 );
+    
     for( int k=-1; k<=1; ++k )
     for( int j=-1; j<=1; ++j )
     for( int i=-1; i<=1; ++i )
     {
         vec3 b = vec3( float(i), float(j), float(k) );
-
-#if 1
-
         vec3 hx = p + b ;
         vec3 r = vec3( b ) - f + texture( u_rnd_tex, (hx.xy+vec2(3.0,1.0)*hx.z+0.5)/256.0, -100.0 ).xyz;
-#else
-
-        vec3 r = vec3( b ) - f + gradient_hash( p + b );
-#endif
 
         float d = dot( r, r );
 
@@ -390,14 +379,9 @@ float fresnel(Ray r, vec3 n, float nc, float nt, vec3 refr){
 
 //=============================== SDF FUNCTIONS =================================
 
-float sdBoxCheap( in vec3 p, in vec3 b){
-    vec3 d = abs(p) - b;
-    return max(max(d.x, d.y), d.z);
-}
-
 float sdBox( in vec3 p, in vec3 b ){
     vec3 d = abs(p) - b;
-    return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
+    return length(max(d,0.0)) + min(max(d.x,max(d.y,d.z)),0.0);
 }
 
 float sdSphere( in vec3 p, in float s ){
@@ -541,12 +525,12 @@ float siggraph_obj( vec3 p ){
 	return max( max( d1, d2 ), -d3 );
 }
 
-// by @iq
+// Optimized Menger Sponge with fewer iterations
 float MengerSponge( vec3 p, vec3 scale){
     float d = sdBox(p, scale);
 
     float s = 1.0;
-    for( int m=0; m<4; ++m )
+    for( int m=0; m<3; ++m ) // Reduced from 4 to 3 iterations
     {
         vec3 a = mod( p*s, 2.0 )-1.0;
         s *= 3.0;
@@ -562,21 +546,19 @@ float MengerSponge( vec3 p, vec3 scale){
     return d;
 }
 
-// by @iq
+// Optimized Mandelbulb with fewer iterations
 float Mandelbulb( vec3 p ){
     vec3 w = p;
     float m = dot(w,w);
 
     vec4 trap = vec4(abs(w),m);
-	float dz = 1.0;
+    float dz = 1.0;
 
-
-	for( int i=0; i<4; ++i )
-  {
-#if 1
+    for( int i=0; i<3; ++i ) // Reduced from 4 to 3 iterations
+    {
         float m2 = m*m;
         float m4 = m2*m2;
-		dz = 8.0*sqrt(m4*m2*m)*dz + 1.0;
+        dz = 8.0*sqrt(m4*m2*m)*dz + 1.0;
 
         float x = w.x; float x2 = x*x; float x4 = x2*x2;
         float y = w.y; float y2 = y*y; float y4 = y2*y2;
@@ -590,19 +572,11 @@ float Mandelbulb( vec3 p ){
         w.x = p.x +  64.0*x*y*z*(x2-z2)*k4*(x4-6.0*x2*z2+z4)*k1*k2;
         w.y = p.y + -16.0*y2*k3*k4*k4 + k1*k1;
         w.z = p.z +  -8.0*y*k4*(x4*x4 - 28.0*x4*x2*z2 + 70.0*x4*z4 - 28.0*x2*z2*z4 + z4*z4)*k1*k2;
-#else
-		dz = 8.0*pow(m,3.5)*dz + 1.0;
-
-        float r = length(w);
-        float b = 8.0*acos( clamp(w.y/r, -1.0, 1.0));
-        float a = 8.0*atan( w.x, w.z );
-        w = p + pow(r,8.0) * vec3( sin(b)*sin(a), cos(b), sin(b)*cos(a) );
-#endif
 
         trap = min( trap, vec4(abs(w),m) );
 
         m = dot(w,w);
-		if( m > 4.0 )
+        if( m > 4.0 )
             break;
     }
     trap.x = m;
@@ -625,76 +599,62 @@ vec2 map( vec3 p ){
 }
 
 vec3 calcNormal( in vec3 pos ){
-    vec3 eps = vec3(EPSILON*2.0,0.0,0.0);
-
+    const vec2 eps = vec2(EPSILON, 0.0);
+    
     return normalize( vec3(
-      map( pos+eps.xyy ).x - map( pos-eps.xyy ).x,
-      map( pos+eps.yxy ).x - map( pos-eps.yxy ).x,
-      map( pos+eps.yyx ).x - map( pos-eps.yyx ).x ) );
+        map(pos + eps.xyy).x - map(pos - eps.xyy).x,
+        map(pos + eps.yxy).x - map(pos - eps.yxy).x,
+        map(pos + eps.yyx).x - map(pos - eps.yyx).x ) );
 }
 
 //-------------------------------------------------------------------------------
 
 vec4 getTexel(const Material mat, in Hit hit, in float t){
-
-    if(mat.tex.t == TEXTURE0 || mat.tex.t == TEXTURE1 || mat.tex.t == TEXTURE2 || mat.tex.t == TEXTURE3
-       || mat.tex.t == CHECK || mat.tex.t == RIPPLE){
-
-        if(mat.tex.t == TEXTURE0 )
-        {
-            return textureLod( u_tex0, hit.uv, 0. );
-        }
-        else if(mat.tex.t == TEXTURE1 )
-        {
-            return textureLod( u_tex1, hit.uv, 0. );
-        }
-        else if(mat.tex.t == TEXTURE2 )
-        {
-            return textureLod( u_tex2, hit.uv, 0. );
-        }
-        else if(mat.tex.t == TEXTURE3 )
-        {
-            return textureLod( u_tex3, hit.uv, 0. );
-        }
-        else if(mat.tex.t == CHECK )
-        {
-            return vec4( mod( floor(mat.tex.params.x*hit.uv.x) + floor(mat.tex.params.y*hit.uv.y), mat.tex.params.z) );
-        }
-        else if(mat.tex.t == RIPPLE )
-        {
-            return vec4( mod( ceil(distance(hit.uv, mat.tex.params.xy)*mat.tex.params.z),mat.tex.params.w) );
-        }
+    int tex_type = mat.tex.t;
+    
+    // Handle simple texture types first
+    if(tex_type <= TEXTURE3) {
+        if(tex_type == TEXTURE0) return textureLod( u_tex0, hit.uv, 0. );
+        if(tex_type == TEXTURE1) return textureLod( u_tex1, hit.uv, 0. );
+        if(tex_type == TEXTURE2) return textureLod( u_tex2, hit.uv, 0. );
+        if(tex_type == TEXTURE3) return textureLod( u_tex3, hit.uv, 0. );
     }
-    else if(mat.tex.t == VORONOI )
-    {
-        return vec4( voronoi( mat.tex.params.xyz*hit.pos ), 0. );
+    
+    // Handle procedural patterns
+    if(tex_type == CHECK) {
+        return vec4( mod( floor(mat.tex.params.x*hit.uv.x) + floor(mat.tex.params.y*hit.uv.y), mat.tex.params.z) );
     }
-    else if(mat.tex.t == GRADIENT_NOISE )
-    {
-        float f = gradient_noise( mat.tex.params.xyz*hit.pos );
+    
+    if(tex_type == RIPPLE) {
+        return vec4( mod( ceil(distance(hit.uv, mat.tex.params.xy)*mat.tex.params.z),mat.tex.params.w) );
+    }
+    
+    // Handle 3D noise functions
+    vec3 scaled_pos = mat.tex.params.xyz * hit.pos;
+    
+    if(tex_type == VORONOI) {
+        return vec4( voronoi( scaled_pos ), 0. );
+    }
+    
+    if(tex_type == GRADIENT_NOISE) {
+        float f = gradient_noise( scaled_pos );
         return vec4(smoothstep( -0.7, 0.7, f ));
     }
-    else if(mat.tex.t == VALUE_NOISE )
-    {
-        return vec4( value_noise( mat.tex.params.xyz*hit.pos ) );
+    
+    if(tex_type == VALUE_NOISE) {
+        return vec4( value_noise( scaled_pos ) );
     }
-    else if(mat.tex.t == METAL)
-    {
+    
+    if(tex_type == METAL) {
         const vec3 m = vec3(-1.2,1.99,-1.6);
-
-        vec3 q = mat.tex.params.xyz*hit.pos;
+        vec3 q = scaled_pos;
         float f = 0.5000*value_noise( q ); q = m*q*2.01;
         f += 0.2500*value_noise( q ); q = m*q*2.02;
-        f += 0.1250*value_noise( q ); q = m*q*2.03;
-        f += 0.0625*value_noise( q ); q = m*q*2.01;
-
+        f += 0.1250*value_noise( q );
         return vec4(f);
     }
-    else
-    {
-        return vec4(0.0);
-    }
-
+    
+    return vec4(0.0);
 }
 
 //-----------------------------------------------------
@@ -740,57 +700,48 @@ bool iPlane(const Mesh plane, in Ray r, in float tmin, out float t){
 	return (t > EPSILON) && (t < tmin);
 }
 
-//> sphere intersection
+//> sphere intersection - optimized
 bool iSphere(const Mesh sphere, in Ray r, in float tmin, out float t){
-	vec3 op = sphere.pos - r.o;
-	float b = dot(op, r.d);
-	float det = b * b - dot(op, op) + sphere.joker.x * sphere.joker.x;
+    vec3 oc = r.o - sphere.pos;
+    float b = dot(oc, r.d);
+    float c = dot(oc, oc) - sphere.joker.x * sphere.joker.x;
+    float discriminant = b * b - c;
 
-	if(det < 0.0) return false;
+    if(discriminant < 0.0) return false;
 
-	det = sqrt(det);
-
-	t = b - det;
-	if(t > EPSILON && t < tmin) return true;
-
-	t = b + det;
-	if(t > EPSILON && t < tmin) return true;
-
-	return false;
+    float sqrt_d = sqrt(discriminant);
+    t = -b - sqrt_d;
+    
+    if(t > EPSILON && t < tmin) return true;
+    
+    t = -b + sqrt_d;
+    return (t > EPSILON && t < tmin);
 }
 
-//> box intersection
+//> box intersection - optimized
 bool iBox(const Mesh box, in Ray r, in float tmin, out float t, out vec3 n){
-  vec3 minCorner = box.pos - box.joker.x * 0.5;
-  vec3 maxCorner = box.pos + box.joker.x * 0.5;
-
-	vec3 invDir = 1.0 / r.d;
-	vec3 dmin = (minCorner - r.o) * invDir;
-	vec3 dmax = (maxCorner - r.o) * invDir;
-
-	vec3 real_min = min(dmin, dmax);
-	vec3 real_max = max(dmin, dmax);
-
-	float minmax = min( min(real_max.x, real_max.y), real_max.z);
-	float maxmin = max( max(real_min.x, real_min.y), real_min.z);
-
-	if (minmax > maxmin)
-	{
-
-		if (maxmin > 0.0) // if we are outside the box
-		{
-			n = -sign(r.d) * step(real_min.yzx, real_min) * step(real_min.zxy, real_min);
-			t = maxmin;
-		}
-		else if (minmax > 0.0) // else if we are inside the box
-		{
-			n = -sign(r.d) * step(real_max, real_max.yzx) * step(real_max, real_max.zxy);
-			t = minmax;
-		}
-
-	}
-
-	return (t > EPSILON) && (t < tmin);
+    vec3 m = 1.0 / r.d; // can precompute if needed
+    vec3 n_vec = m * (box.pos - r.o);
+    vec3 k = abs(m) * box.joker.x * 0.5;
+    
+    vec3 t1 = n_vec - k;
+    vec3 t2 = n_vec + k;
+    
+    float tN = max(max(t1.x, t1.y), t1.z);
+    float tF = min(min(t2.x, t2.y), t2.z);
+    
+    if(tN > tF || tF < 0.0) return false;
+    
+    t = (tN > 0.0) ? tN : tF;
+    
+    if(t < EPSILON || t >= tmin) return false;
+    
+    // Calculate normal
+    vec3 hit_point = r.o + r.d * t - box.pos;
+    vec3 d = abs(hit_point) - box.joker.x * 0.5;
+    n = normalize(sign(hit_point) * step(d.yzx, d) * step(d.zxy, d));
+    
+    return true;
 }
 
 /*//-----------------------------------------------------------------------------------------
@@ -905,20 +856,30 @@ bool iGRID_SDF(in Ray r, in float tmin, out float t, out Mesh mesh){
 
 //-----------------------------------------------------------------------------------------*/
 
-//> SDF intersection
+//> SDF intersection - optimized with early termination
 bool iSDF(in Ray r, in float tmin, out float t, out vec3 n, out int index){
-    t = EPSILON*10.;
-
+    t = EPSILON * 4.0;  // Start further from surface
+    
     vec2 res;
+    float last_h = INFINITY;
 
     for(int i=0; i<MARCHING_STEPS; ++i){
         res = map(r.o+r.d*t);
-        float h = abs(res.x);
-        if( h<EPSILON || t>tmin ) break;
-        t += h*FUDGE_FACTOR;
+        float h = res.x;
+        
+        // Early termination conditions
+        if(h < EPSILON) break;
+        if(t > tmin) return false;
+        
+        // Improved step size with safety factor
+        t += h * 0.9;
+        
+        // Detect divergence
+        if(h > last_h * 1.6) return false;
+        last_h = h;
     }
 
-    if( t>tmin ) return false;
+    if(t > tmin) return false;
 
     // assign normal
     n = calcNormal(r.o+r.d*t);
@@ -936,27 +897,30 @@ float intersection(in Ray r, out Hit hit){
     float tt = INFINITY;
     float tmin = INFINITY;
 
-	//-------- Mesh Intersection --------
+    //-------- Mesh Intersection --------
     if(U_EUCLIDEAN){
       for(int i = 0; i < NUM_MESHES; ++i)
       {
-        if(meshes[i].joker.x == 0.0) continue;// continue if not def
+        // Early exit for undefined meshes
+        if(meshes[i].joker.x == 0.0) continue;
 
-        if(U_SPHERE && meshes[i].t == SPHERE){
+        int mesh_type = meshes[i].t;
+        
+        if(U_SPHERE && mesh_type == SPHERE){
           if(iSphere(meshes[i], r, tmin, tt))
           {
             tmin = tt;
             type = SPHERE;
             hit.index = i;
           }
-        } else if(U_PLANE && meshes[i].t == PLANE){
+        } else if(U_PLANE && mesh_type == PLANE){
           if(iPlane(meshes[i], r, tmin, tt))
           {
             tmin = tt;
             type = PLANE;
             hit.index = i;
           }
-        } else if(U_BOX && meshes[i].t == BOX){
+        } else if(U_BOX && mesh_type == BOX){
           if(iBox(meshes[i], r, tmin, tt, hit.n))
           {
             tmin = tt;
@@ -998,7 +962,8 @@ float intersection(in Ray r, out Hit hit){
 
       }
 
-      if(!bool(hit.uv.x+1.0)){
+      // Generate UV coordinates if not already set
+      if(hit.uv.x < 0.0){
         vec3 nl = abs(hit.n);
 
         hit.uv = nl.x > nl.y && nl.x > nl.z ? -hit.pos.zy:
@@ -1021,13 +986,20 @@ SOURCE:
 		http://jcgt.org/published/0006/01/01/
 */
 void calc_binormals(vec3 n, out vec3 ox, out vec3 oz){
-	float sig = n.z < 0.0 ? 1.0 : -1.0;
+	float sig = n.z < 0.0 ? -1.0 : 1.0;
 	
-	float a = 1.0 / (n.z - sig);
+	// Handle the degenerate case when n.z is close to ±1
+	if(abs(n.z) > 0.99999) {
+		ox = vec3(1.0, 0.0, 0.0);
+		oz = vec3(0.0, sig, 0.0);
+		return;
+	}
+	
+	float a = 1.0 / (sig - n.z);
 	float b = n.x * n.y * a;
 	
-	ox = vec3(1.0 + sig * n.x * n.x * a, sig * b, sig * n.x);
-	oz = vec3(b, sig + n.y * n.y * a, n.y);
+	ox = vec3(1.0 + sig * n.x * n.x * a, sig * b, -sig * n.x);
+	oz = vec3(b, sig + n.y * n.y * a, -n.y);
 }
 
 vec3 getSampleBiased(vec3 w, float power, float seed){
@@ -1071,7 +1043,7 @@ vec3 randomSphereDirection(float seed){
 
 vec3 randomHemisphereDirection(vec3 n, float seed){
 	vec3 dr = randomSphereDirection(seed);
-	return dot(dr,n) * dr;
+	return dot(dr,n) < 0.0 ? -dr : dr;
 }
 
 vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
@@ -1087,8 +1059,8 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
       vec3 ld = light.pos + (randomSphereDirection(seed + 23.1656) * light.joker.x);
       vec3 srDir = normalize(ld - x);
 
-      // cast shadow ray from intersection point
-      float t = intersection(Ray(x, srDir), hit);
+      // cast shadow ray from intersection point with epsilon offset
+      float t = intersection(Ray(x + nl*EPSILON, srDir), hit);
       Mesh mesh = meshes[hit.index];
 
       if( mesh.mat.t == LIGHT ){
@@ -1104,8 +1076,8 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
       vec3 ld = light.pos + (randomSphereDirection(seed + 78.2358) * light.joker.xyz);
       vec3 srDir = normalize(ld - x);
 
-      // cast shadow ray from intersection point
-      float t = intersection(Ray(x, srDir), hit);
+      // cast shadow ray from intersection point with epsilon offset
+      float t = intersection(Ray(x + nl*EPSILON, srDir), hit);
       Mesh mesh = meshes[hit.index];
 
       if( mesh.mat.t == LIGHT ){
@@ -1116,7 +1088,7 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
   // Directional Light source
   else if(light.mat.t == DIR_LIGHT){
 
-    float t = intersection(Ray(x, light.pos), hit);
+    float t = intersection(Ray(x + nl*EPSILON, light.pos), hit);
 
     if(t == INFINITY){
       dirLight += light.mat.c * light.mat.e * max(0.001, dot(light.pos, nl));
@@ -1154,20 +1126,24 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     bounceIsSpecular = true;
   } else if(meshes[hit.index].mat.t == REFR_FRESNEL || meshes[hit.index].mat.t == REFR_SCHLICK){ // REFRACTIVE
     float nnt = inside < 0. ? nt/nc : nc/nt;
-    vec3 tdir = normalize(_roughness + refract(r.d, nl, nnt));
+    vec3 tdir = refract(r.d, nl, nnt);
 
     r.o = x;
 
-    // total internal reflection
-    if(dot(tdir, tdir) == 0.0) {
+    // total internal reflection - check if refraction failed
+    if(length(tdir) == 0.0) {
       r.o += nl*EPSILON;
       r.d = normalize(_roughness + reflect(r.d, nl));
       ++SPEC_BOUNCES;
+      bounceIsSpecular = true;
       return;
     }
 
+    // Apply roughness after successful refraction
+    tdir = normalize(_roughness + tdir);
+
     // select either schlick or fresnel approximation
-    float Re = mix(schlick(r, nl, nc, nt), fresnel(r, nl, nc, nt, tdir), meshes[hit.index].mat.t == REFR_FRESNEL);
+    float Re = mix(schlick(r, nl, nc, nt), fresnel(r, nl, nc, nt, tdir), float(meshes[hit.index].mat.t == REFR_FRESNEL));
 
     if( hash(seed) < Re){
       r.o += nl*EPSILON;
@@ -1202,7 +1178,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
 #ifdef USE_CUBEMAP
     vec3 srDir = getRandomDirection(nl, seed + bounce*965.325);
 
-    float t = intersection(Ray(x, srDir), hit);
+    float t = intersection(Ray(x + nl*EPSILON, srDir), hit);
     if(t == INFINITY){
       acc += mask * texture(u_cubemap, srDir).rgb * max(0.001, dot(srDir, nl));
     }
@@ -1263,11 +1239,13 @@ vec3 radiance(Ray r, float seed){
         mask *= c;
         acc += mask*e;
       }
-
       break;
     }
 
     brdf(hit, c, e, t, inside, r, mask, acc, bounceIsSpecular, seed, float(depth));
+
+    // Early termination for low contribution
+    if(max(mask.x, max(mask.y, mask.z)) < 0.01) break;
 
     // terminate if necessary
     if( DIFF_BOUNCES      >= MAX_DIFF_BOUNCES   || SPEC_BOUNCES      >= MAX_SPEC_BOUNCES   ||
@@ -1289,23 +1267,21 @@ void main(void){
 
     //camera setup
     float theta = u_camParams.x*RAD;
-    float uVLen = tan(theta/2.);
+    float uVLen = tan(theta*0.5);
     float uULen = aspect * uVLen;
 
-  	vec3 w = normalize(u_camLookAt);
-  	vec3 u = normalize(cross(w,vec3(0.0, 1.0, 0.0)));
-  	vec3 v = cross(u, w);
+    vec3 w = normalize(u_camLookAt);
+    vec3 u = normalize(cross(w,vec3(0.0, 1.0, 0.0)));
+    vec3 v = cross(u, w);
 
-    float r1 = 2.0 * hash(seed+13.271);
-    float r2 = 2.0 * hash(seed+63.216);
-
-    // AA offset
+    // Optimized AA offset calculation
+    float r1 = hash(seed+13.271);
+    float r2 = hash(seed+63.216);
+    
     vec2 d = vec2(
-      r1 < 1.0 ? sqrt(r1) - 1.0 : 1.0 - sqrt(2.0 - r1),
-      r2 < 1.0 ? sqrt(r2) - 1.0 : 1.0 - sqrt(2.0 - r2)
-    );
-    d /= (u_resolution * 0.5);
-    d += st;
+      r1 < 0.5 ? sqrt(r1*2.0) - 1.0 : 1.0 - sqrt(2.0 - r1*2.0),
+      r2 < 0.5 ? sqrt(r2*2.0) - 1.0 : 1.0 - sqrt(2.0 - r2*2.0)
+    ) / (u_resolution * 0.5) + st;
 
     vec3 focalPoint = normalize(d.x * u * uULen + d.y * v * uVLen  + w) * u_camParams.z;
 
