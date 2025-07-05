@@ -254,6 +254,25 @@ body::before {
   position: absolute;
 }
 
+/* Mutual exclusion styling for CUBEMAP and PROCEDURAL SKY */
+#settings #checkboxes div input[type="checkbox"]:disabled + label {
+  opacity: 0.5;
+  color: #7d8590;
+  cursor: not-allowed;
+}
+
+#settings #checkboxes div input[type="checkbox"]:disabled + label::before {
+  background: rgba(48, 54, 61, 0.3);
+  border-color: rgba(88, 166, 255, 0.2);
+}
+
+/* Visual indicator for mutually exclusive options */
+.mutually-exclusive-group {
+  border-left: 3px solid rgba(88, 166, 255, 0.3);
+  padding-left: 10px;
+  margin: 10px 0;
+}
+
 #settings h4 {
   text-align: center;
 }

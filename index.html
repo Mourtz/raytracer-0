@@ -23,19 +23,21 @@
       <h4>Settings</h4>
 
       <div id="checkboxes">
-        <div>
-          <input type="checkbox" id="u_cubemap" checked="checked" onchange="updateParams(this);" />
-          <label for="u_cubemap">CUBEMAP</label>
+        <div class="mutually-exclusive-group">
+          <div>
+            <input type="checkbox" id="u_cubemap" checked="checked" onchange="updateParams(this);" />
+            <label for="u_cubemap">CUBEMAP</label>
+          </div>
+
+          <div>
+            <input type="checkbox" id="u_procedural_sky" onchange="updateParams(this);" />
+            <label for="u_procedural_sky">PROCEDURAL SKY</label>
+          </div>
         </div>
 
         <div>
           <input type="checkbox" id="u_biased_sampling" checked="checked" onchange="updateParams(this);" />
           <label for="u_biased_sampling">BIASED</label>
-        </div>
-
-        <div>
-          <input type="checkbox" id="u_procedural_sky" onchange="updateParams(this);" />
-          <label for="u_procedural_sky">PROCEDURAL SKY</label>
         </div>
 
         <div>
@@ -134,7 +136,7 @@
       <!--   Scene modifier wrapper   -->
       <div id="scene_wrapper">
         Current Scene:<br>
-        <textarea id="scene" oninput='this.style.height = "1px"; this.style.height = this.scrollHeight+"px"; $("#compileBtn").css("background-color", "rgb(255, 0, 0)");'>MAT_METAL, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
+        <textarea id="scene" oninput='this.style.height = "1px"; this.style.height = this.scrollHeight+"px"; $("#compileBtn").css("background", "linear-gradient(135deg, #dc2626, #ef4444)"); is_live = false; $("#liveBtn").css("background-color", "rgb(105, 105, 105)");'>MAT_METAL, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
 MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
       </div>
 
@@ -373,6 +375,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
 
           if (el.id === "m_steps") {
             sandbox.constants[5] = "const mediump int MARCHING_STEPS = " + el.value + ";";
+            markNeedsRecompilation();
           } else if (el.id === "max_bounces") {
             $('#max_diff').attr("max", el.value);
             $('#max_spec').attr("max", el.value);
@@ -380,30 +383,60 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
             $('#max_scatter').attr("max", el.value);
 
             sandbox.constants[0] = "const lowp int MAX_BOUNCES = " + el.value + ";";
+            markNeedsRecompilation();
           } else if (el.id === "max_diff") {
             sandbox.constants[1] = "const lowp int MAX_DIFF_BOUNCES = " + el.value + ";";
+            markNeedsRecompilation();
           } else if (el.id === "max_spec") {
             sandbox.constants[2] = "const lowp int MAX_SPEC_BOUNCES = " + el.value + ";";
+            markNeedsRecompilation();
           } else if (el.id === "max_trans") {
             sandbox.constants[3] = "const lowp int MAX_TRANS_BOUNCES = " + el.value + ";";
+            markNeedsRecompilation();
           } else if (el.id === "max_scatter") {
             sandbox.constants[4] = "const lowp int MAX_SCATTERING_EVENTS = " + el.value + ";";
+            markNeedsRecompilation();
           } else {
             return console.error();
           }
         }
 
       } else if (el.type == "checkbox") {
+        console.log("Checkbox changed:", el.id, "checked:", el.checked);
         if (el.id == "u_cubemap") {
-          sandbox.defines[0] = el.checked ? "#define USE_CUBEMAP" : "";
+          sandbox.defines[0] = el.checked ? "#define USE_CUBEMAP" : "//#define USE_CUBEMAP";
+          console.log("Updated USE_CUBEMAP:", sandbox.defines[0]);
+          markNeedsRecompilation();
+          
+          // Disable PROCEDURAL SKY when CUBEMAP is enabled
+          if (el.checked) {
+            $("#u_procedural_sky").prop('checked', false);
+            sandbox.defines[1] = "//#define USE_PROCEDURAL_SKY";
+            console.log("Auto-disabled USE_PROCEDURAL_SKY");
+          }
         } else if (el.id == "u_procedural_sky") {
-          sandbox.defines[1] = el.checked ? "#define USE_PROCEDURAL_SKY" : "";
+          sandbox.defines[1] = el.checked ? "#define USE_PROCEDURAL_SKY" : "//#define USE_PROCEDURAL_SKY";
+          console.log("Updated USE_PROCEDURAL_SKY:", sandbox.defines[1]);
+          markNeedsRecompilation();
+          
+          // Disable CUBEMAP when PROCEDURAL SKY is enabled
+          if (el.checked) {
+            $("#u_cubemap").prop('checked', false);
+            sandbox.defines[0] = "//#define USE_CUBEMAP";
+            console.log("Auto-disabled USE_CUBEMAP");
+          }
         } else if (el.id == "u_biased_sampling") {
-          sandbox.defines[2] = el.checked ? "#define USE_BIASED_SAMPLING" : "";
+          sandbox.defines[2] = el.checked ? "#define USE_BIASED_SAMPLING" : "//#define USE_BIASED_SAMPLING";
+          console.log("Updated USE_BIASED_SAMPLING:", sandbox.defines[2]);
+          markNeedsRecompilation();
         } else if (el.id == "sample_lights") {
           sandbox.constants[7] = "const bool sample_lights = " + el.checked + ";";
+          console.log("Updated sample_lights:", sandbox.constants[7]);
+          markNeedsRecompilation();
         } else if (el.id == "u_biDirectional") {
-          sandbox.defines[3] = el.checked ? "#define USE_BIDIRECTIONAL" : "";
+          sandbox.defines[3] = el.checked ? "#define USE_BIDIRECTIONAL" : "//#define USE_BIDIRECTIONAL";
+          console.log("Updated USE_BIDIRECTIONAL:", sandbox.defines[3]);
+          markNeedsRecompilation();
 
           if (el.checked) {
             $("#sample_lights").prop('checked', true);
@@ -489,7 +522,7 @@ const lowp int light_index[` + light_indices.length + `] = int[](
 
             if (i == 0) sdf_html.push("SDF meshes");
             sdf_html.push("<div class=\"input-field col s12\">")
-            sdf_html.push("<select id = 'sdf" + i + "' onchange='$(\"#compileBtn\").css(\"background-color\", \"rgb(255, 0, 0)\");'>");
+            sdf_html.push("<select id = 'sdf" + i + "' onchange='$(\"#compileBtn\").css(\"background\", \"linear-gradient(135deg, #dc2626, #ef4444)\"); is_live = false; $(\"#liveBtn\").css(\"background-color\", \"rgb(105, 105, 105)\");'>");
 
             let curr_val = 0;
 
@@ -527,16 +560,21 @@ const lowp int light_index[` + light_indices.length + `] = int[](
           // update sdf_meshes selector
           $("#sdf_meshes").html(sdf_html.join("\n"));
           $('select').material_select();
+          
+          // Mark that recompilation is needed for scene changes
+          if (el.dn_highlight === false) {
+            markNeedsRecompilation();
+          }
         }
       } else {
         return console.error();
       }
 
       rendering = false;
-      if (el.dn_highlight == false){
-        $("#compileBtn").css("background-color", 'rgb(255, 0, 0)');
-        is_live = false;
-        $("#liveBtn").css("background-color", is_live ? "rgb(255, 0, 0)" : "rgb(105, 105, 105)");
+      // Only mark for recompilation if this is a user-initiated change (not internal updates)
+      if (el.dn_highlight == false || el.type == "checkbox" || el.type == "range"){
+        // Scene changes and checkbox/range changes need recompilation
+        // No need to call markNeedsRecompilation() again since it's already called above for specific cases
       } 
       sandbox.clear();
       sandbox.passes = 0;
@@ -593,7 +631,7 @@ MAT_REFR_CLEAR, SPHERE, vec3(0.0), vec4(0.5)`;
 
         sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
         sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
-        $("#compileBtn").css("background-color", 'rgb(255, 0, 0)');
+        markNeedsRecompilation();
       } else if (val == 2) {
         scene_el.value = `MAT_WHITE, PLANE, vec3(0.0, 1.0, 0.0), vec4(2.0)
 MAT_WHITE, PLANE, vec3(0.0, -1.0, 0.0), vec4(2.0)
@@ -658,11 +696,22 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
       }
 
       // Cubemap
-      sandbox.defines[0] = enabled[0] ? "#define USE_CUBEMAP" : "";
+      sandbox.defines[0] = enabled[0] ? "#define USE_CUBEMAP" : "//#define USE_CUBEMAP";
       $("#u_cubemap").prop('checked', enabled[0]);
 
+      // Procedural Sky - ensure mutual exclusion with cubemap
+      if (enabled[0]) {
+        // If cubemap is enabled, disable procedural sky
+        sandbox.defines[1] = "//#define USE_PROCEDURAL_SKY";
+        $("#u_procedural_sky").prop('checked', false);
+      } else {
+        // If cubemap is disabled, procedural sky can be enabled
+        sandbox.defines[1] = "//#define USE_PROCEDURAL_SKY";
+        $("#u_procedural_sky").prop('checked', false);
+      }
+
       // Bi-Directional Pathtracing
-      // sandbox.defines[3] = enabled[1] ? "#define USE_BIDIRECTIONAL" : "";
+      // sandbox.defines[3] = enabled[1] ? "#define USE_BIDIRECTIONAL" : "//#define USE_BIDIRECTIONAL";
       // $("#u_biDirectional").prop('checked', enabled[1]);
 
       // sample lights
@@ -680,10 +729,16 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
 
       scene_el.style.height = "1px";
       scene_el.style.height = scene_el.scrollHeight + "px";
+      
+      // Mark that recompilation is needed when scene is changed
+      markNeedsRecompilation();
     }
 
     function recompile() {
-      if ($("#compileBtn").css("background-color") == "rgb(105, 105, 105)") return console.info("There is no need to recompile the shader.");
+      if (!needsRecompilation()) return console.info("There is no need to recompile the shader.");
+
+      console.log("Recompiling shader with defines:", sandbox.defines);
+      console.log("Recompiling shader with constants:", sandbox.constants);
 
       updateParams({
         type: 'textarea',
@@ -698,13 +753,34 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
         console.warn(e.message)
       };
       shaders[1].string = parseShader(shaders[1].filepath, sandbox);
+      console.log("New shader compiled successfully");
       sandbox.createShader(shaders[1]);
       sandbox.gl.attachShader(sandbox.frontTarget.program, sandbox.shaders[shaders[1].name]);
       sandbox.gl.linkProgram(sandbox.frontTarget.program);
       sandbox.updateFrontTarget();
 
       console.clear();
-      $("#compileBtn").css("background-color", 'rgb(105, 105, 105)');
+      $("#compileBtn").css("background", "linear-gradient(135deg, #6b7280, #9ca3af)");
+    }
+
+    function needsRecompilation() {
+      return $("#compileBtn").css("background").indexOf("rgb(220, 38, 38)") !== -1 || 
+             $("#compileBtn").css("background").indexOf("#dc2626") !== -1;
+    }
+
+    function markNeedsRecompilation() {
+      $("#compileBtn").css("background", "linear-gradient(135deg, #dc2626, #ef4444)");
+      is_live = false;
+      $("#liveBtn").css("background-color", "rgb(105, 105, 105)");
+    }
+
+    function autoRecompileIfNeeded() {
+      if (needsRecompilation()) {
+        console.log("Auto-recompiling shader before rendering...");
+        recompile();
+        return true;
+      }
+      return false;
     }
 
     function RenderLoop() {
@@ -734,6 +810,12 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
     }
 
     function draw() {
+      // Auto-recompile if needed before starting to render
+      if (!rendering && needsRecompilation()) {
+        console.log("Auto-recompiling shader before rendering...");
+        recompile();
+      }
+      
       rendering = !rendering;
       document.getElementById("renderBtn").innerHTML = rendering ? "STOP" : "RENDER";
       if (rendering) sandbox.clear();
