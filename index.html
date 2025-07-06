@@ -75,7 +75,6 @@
           <option value="1">Cornell Box</option>
           <option value="2">Mandelbulb</option>
           <option value="3">MengerSponge</option>
-          <option value="4" disabled>BiDirTest0</option>
         </select>
         <label>Scene Select</label>
       </div>
@@ -674,24 +673,6 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
         $('select').material_select();
 
         sandbox.camera.origin = new Vector3(0.0, 0.0, 2.0);
-        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
-      } else if (val == 4) {
-        scene_el.value = `MAT_WHITE, SDF, vec3(0.0), vec4(1.0)`;
-
-        enabled[0] = false;
-        enabled[1] = true;
-        enabled[2] = true;
-
-        updateParams({
-          type: 'textarea',
-          id: 'scene',
-          dn_highlight: false,
-          text: $("#scene").val()
-        });
-        $("#sdf0").val(7);
-        $('select').material_select();
-
-        sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
         sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
       }
 
