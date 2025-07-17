@@ -525,12 +525,11 @@ float siggraph_obj( vec3 p ){
 	return max( max( d1, d2 ), -d3 );
 }
 
-// Optimized Menger Sponge with fewer iterations
 float MengerSponge( vec3 p, vec3 scale){
     float d = sdBox(p, scale);
 
     float s = 1.0;
-    for( int m=0; m<3; ++m ) // Reduced from 4 to 3 iterations
+    for( int m=0; m<4; ++m )
     {
         vec3 a = mod( p*s, 2.0 )-1.0;
         s *= 3.0;
@@ -858,28 +857,18 @@ bool iGRID_SDF(in Ray r, in float tmin, out float t, out Mesh mesh){
 
 //> SDF intersection - optimized with early termination
 bool iSDF(in Ray r, in float tmin, out float t, out vec3 n, out int index){
-    t = EPSILON * 4.0;  // Start further from surface
-    
+    t = EPSILON*4.0;
+
     vec2 res;
-    float last_h = INFINITY;
 
     for(int i=0; i<MARCHING_STEPS; ++i){
         res = map(r.o+r.d*t);
-        float h = res.x;
-        
-        // Early termination conditions
-        if(h < EPSILON) break;
-        if(t > tmin) return false;
-        
-        // Improved step size with safety factor
-        t += h * 0.9;
-        
-        // Detect divergence
-        if(h > last_h * 1.6) return false;
-        last_h = h;
+        float h = abs(res.x);
+        if( h<EPSILON || t>tmin ) break;
+        t += h*FUDGE_FACTOR;
     }
 
-    if(t > tmin) return false;
+    if( t>tmin ) return false;
 
     // assign normal
     n = calcNormal(r.o+r.d*t);

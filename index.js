@@ -22,7 +22,7 @@ class GlslViewport {
       "const lowp int MAX_TRANS_BOUNCES = 12;",
       "const lowp int MAX_SCATTERING_EVENTS = 12;",
       "const mediump int MARCHING_STEPS = 128;",
-      "const lowp float FUDGE_FACTOR = 1.0;",
+      "const lowp float FUDGE_FACTOR = 0.9;",
       "const bool sample_lights = true;",
       "const lowp int LIGHT_PATH_LENGTH = 2;"
     ];
