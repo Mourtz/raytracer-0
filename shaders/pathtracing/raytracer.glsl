@@ -1087,6 +1087,35 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
   return dirLight;
 }
 
+// Power heuristic for MIS
+float powerHeuristic(float nf, float fPdf, float ng, float gPdf) {
+    float f = nf * fPdf;
+    float g = ng * gPdf;
+    return (f * f) / (f * f + g * g);
+}
+
+// Calculate PDF for cosine-weighted hemisphere sampling
+float cosineHemispherePdf(vec3 wi, vec3 n) {
+    return max(0.0, dot(wi, n)) * ONE_OVER_PI;
+}
+
+// Calculate PDF for light sampling
+float lightSamplingPdf(const Mesh light, vec3 x, vec3 wi) {
+    if(light.mat.t != LIGHT) return 0.0;
+    
+    if(U_SPHERE && light.t == SPHERE) {
+        vec3 d = light.pos - x;
+        float d2 = dot(d, d);
+        float r2 = light.joker.x * light.joker.x;
+        if(d2 <= r2) return 0.0; // Inside sphere
+        
+        float cos_theta_max = sqrt(max(0.0, 1.0 - r2 / d2));
+        return 1.0 / (TWO_PI * (1.0 - cos_theta_max));
+    }
+    
+    return 1.0 / FOUR_PI; // Uniform sphere sampling fallback
+}
+
 void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout Ray r, inout vec3 mask, inout vec3 acc, inout bool bounceIsSpecular, in float seed, in float bounce){
 
   vec3 x = hit.pos;
@@ -1174,8 +1203,42 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
 #endif
 
     if(sample_lights){
-      for(int i = 0; i < light_index.length(); ++i){
-        acc += calcDirectLighting(meshes[light_index[i]], x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13)*mask;
+      if(use_mis && light_index.length() > 0){
+        // Multiple Importance Sampling
+        vec3 misContribution = vec3(0.0);
+        
+        for(int i = 0; i < light_index.length(); ++i){
+          if(light_index[i] < 0) continue;
+          
+          Mesh light = meshes[light_index[i]];
+          if(light.mat.t != LIGHT) continue;
+          
+          // Light sampling strategy
+          vec3 lightSample = calcDirectLighting(light, x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13 + float(i)*123.456);
+          
+          if(length(lightSample) > 0.001) {
+            // Sample direction towards light
+            vec3 lightDir = normalize(light.pos - x);
+            
+            // Calculate PDFs
+            float lightPdf = lightSamplingPdf(light, x, lightDir);
+            float brdfPdf = cosineHemispherePdf(lightDir, nl);
+            
+            // MIS weight using power heuristic
+            float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
+            
+            misContribution += lightSample * misWeight;
+          }
+        }
+        
+        acc += misContribution * mask;
+      } else {
+        // Standard direct lighting
+        for(int i = 0; i < light_index.length(); ++i){
+          if(light_index[i] >= 0) {
+            acc += calcDirectLighting(meshes[light_index[i]], x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13)*mask;
+          }
+        }
       }
     }
   }
@@ -1225,6 +1288,20 @@ vec3 radiance(Ray r, float seed){
 
     if(mesh.mat.t == LIGHT){
       if(bounceIsSpecular || !sample_lights){
+        mask *= c;
+        acc += mask*e;
+      } else if(use_mis && depth > 0) {
+        // BRDF sampling contribution for MIS
+        vec3 lightDir = normalize(hit.pos - r.o);
+        float lightPdf = lightSamplingPdf(mesh, r.o, lightDir);
+        float brdfPdf = cosineHemispherePdf(lightDir, hit.n);
+        
+        // MIS weight for BRDF sampling
+        float misWeight = powerHeuristic(1.0, brdfPdf, 1.0, lightPdf);
+        
+        mask *= c;
+        acc += mask * e * misWeight;
+      } else {
         mask *= c;
         acc += mask*e;
       }

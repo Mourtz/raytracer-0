@@ -24,6 +24,7 @@ class GlslViewport {
       "const mediump int MARCHING_STEPS = 128;",
       "const lowp float FUDGE_FACTOR = 0.9;",
       "const bool sample_lights = true;",
+      "const bool use_mis = false;",
       "const lowp int LIGHT_PATH_LENGTH = 2;"
     ];
 

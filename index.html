@@ -45,6 +45,11 @@
           <label for="sample_lights">SAMPLE LIGHTS</label>
         </div>
 
+        <div>
+          <input type="checkbox" id="use_mis" onchange="updateParams(this);" />
+          <label for="use_mis">MULTIPLE IMPORTANCE SAMPLING</label>
+        </div>
+
 <!--
         <div>
           <input type="checkbox" id="u_biDirectional" onchange="updateParams(this);" />
@@ -75,6 +80,7 @@
           <option value="1">Cornell Box</option>
           <option value="2">Mandelbulb</option>
           <option value="3">MengerSponge</option>
+          <option value="4">MIS Demo</option>
         </select>
         <label>Scene Select</label>
       </div>
@@ -432,6 +438,10 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
           sandbox.constants[7] = "const bool sample_lights = " + el.checked + ";";
           console.log("Updated sample_lights:", sandbox.constants[7]);
           markNeedsRecompilation();
+        } else if (el.id == "use_mis") {
+          sandbox.constants[8] = "const bool use_mis = " + el.checked + ";";
+          console.log("Updated use_mis:", sandbox.constants[8]);
+          markNeedsRecompilation();
         } else if (el.id == "u_biDirectional") {
           sandbox.defines[3] = el.checked ? "#define USE_BIDIRECTIONAL" : "//#define USE_BIDIRECTIONAL";
           console.log("Updated USE_BIDIRECTIONAL:", sandbox.defines[3]);
@@ -673,6 +683,31 @@ MAT_WHITE, SDF, vec3(0.0), vec4(0.0)`;
         $('select').material_select();
 
         sandbox.camera.origin = new Vector3(0.0, 0.0, 2.0);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      } else if (val == 4) { // MIS Demo Scene
+        scene_el.value = `MAT_WHITE, PLANE, vec3(0.0, 1.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, -1.0, 0.0), vec4(2.0)
+MAT_GREEN, PLANE, vec3(1.0, 0.0, 0.0), vec4(2.0)
+MAT_RED, PLANE, vec3(-1.0, 0.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, 1.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, -1.0), vec4(2.0)
+MAT_LIGHT_4, SPHERE, vec3(0.0,1.8,0.0), vec4(0.05)
+MAT_WHITE, SDF, vec3(0.0, 1.0, 0.0), vec4(0.8, 0.1, 0.8, 0.0)`;
+
+        enabled[0] = false;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(0); // Box SDF to block the light
+        $('select').material_select();
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
         sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
       }
 
