@@ -1,9 +1,8 @@
-# Pathtracing using the WebGL API
+# Advanced WebGL2 Pathtracer with ReSTIR and MIS
 
-This is a **not** functional raytracer.
-It is entirely written in Javascript, using the **WebGL2** API to carry out all computations.
-Is kinda modular, allowing the end user to toggle some basic functionalities like "**un/biased** rendering", "**procedural sky**",
-"next event estimation" and "**Bi-Directional** path tracing".
+This is a **fully functional** real-time pathtracer featuring advanced lighting algorithms.
+It is entirely written in JavaScript, using the **WebGL2** API to carry out all computations on the GPU.
+The renderer is highly modular, allowing users to toggle sophisticated features like **Multiple Importance Sampling (MIS)**, **ReSTIR (Reservoir Spatiotemporal Importance Resampling)**, **procedural sky**, and various sampling strategies.
 
 On low end devices, the **GLSL** compiler is usually crashing due to the large amount of code
 that is being passed by the main **fragment** shader.
@@ -21,7 +20,9 @@ of all the browsers I 've tested.
 * supports **raymarching** of signed distance fields
 * **multiple** light sampling
 * **Reinhard** tone mapping
-* cosine weighted **importance sampling**
+* **cosine weighted** importance sampling
+* **MIS** (Multiple Importance Sampling)
+* **ReSTIR** (Reservoir Spatiotemporal Importance Resampling)
 
 [**Demo**](https://mourtz.github.io/raytracer-0/) (Let it fetch all the required data before hitting the render button!)
 
@@ -33,7 +34,6 @@ of all the browsers I 've tested.
 * HLBVH support(some work has been done already)
 * participating media
 * volumetric SDF
-* functional camera controls
 * BSSRDF
 
 ## Future Plans
@@ -49,8 +49,15 @@ However, **Arrayfire** seems like a good tool I could make use of in the future.
 
 [Show more](https://goo.gl/photos/4zafwXUs4Ph9rux48)
 
-## Credits
-[iq](http://www.iquilezles.org/) - Inigo quilez <br>
-[Toshiya Hachisuka](http://www.ci.i.u-tokyo.ac.jp/~hachisuka/) - Toshiya Hachisuka <br>
-[reinder](http://reindernijhoff.net/) - Reinder Nijhoff <br>
-[erichlof](https://github.com/erichlof) - Erich Loftis <br>
+## References & Credits
+
+### **Research Papers**
+- **ReSTIR**: "Spatiotemporal reservoir resampling for real-time ray tracing with dynamic direct lighting" (Bitterli et al., 2020)
+- **Multiple Importance Sampling**: "Optimally combining sampling techniques for Monte Carlo rendering" (Veach & Guibas, 1995)
+- **Power Heuristic**: "Robust Monte Carlo methods for light transport simulation" (Veach, 1997)
+
+### **Inspiration & Techniques**
+- [**iq**](http://www.iquilezles.org/) - Inigo Quilez (SDF techniques and noise functions)
+- [**Toshiya Hachisuka**](http://www.ci.i.u-tokyo.ac.jp/~hachisuka/) - Advanced light transport algorithms
+- [**reinder**](http://reindernijhoff.net/) - Reinder Nijhoff (WebGL raytracing techniques)
+- [**erichlof**](https://github.com/erichlof) - Erich Loftis (Real-time pathtracing implementations)

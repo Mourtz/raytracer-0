@@ -7,7 +7,8 @@
   <!--  CSS  -->
   <link href="index.css" rel="stylesheet">
   <!--Import materialize.css-->
-  <link type="text/css" rel="stylesheet" href="external/css/materialize.min.css" media="screen,projection" /> </head>
+  <link type="text/css" rel="stylesheet" href="external/css/materialize.min.css" media="screen,projection" />
+</head>
 
 <body>
   <div id="intro">
@@ -47,10 +48,15 @@
 
         <div>
           <input type="checkbox" id="use_mis" onchange="updateParams(this);" />
-          <label for="use_mis">MULTIPLE IMPORTANCE SAMPLING</label>
+          <label for="use_mis">MIS</label>
         </div>
 
-<!--
+        <div>
+          <input type="checkbox" id="use_restir" onchange="updateParams(this);" />
+          <label for="use_restir">ReSTIR</label>
+        </div>
+
+        <!--
         <div>
           <input type="checkbox" id="u_biDirectional" onchange="updateParams(this);" />
           <label for="u_biDirectional">BI-DIRECTIONAL</label>
@@ -81,6 +87,8 @@
           <option value="2">Mandelbulb</option>
           <option value="3">MengerSponge</option>
           <option value="4">MIS Demo</option>
+          <option value="5">ReSTIR Demo (9 lights)</option>
+          <option value="6">ReSTIR Heavy (25+ lights)</option>
         </select>
         <label>Scene Select</label>
       </div>
@@ -126,12 +134,12 @@
         <a class="waves-effect waves-light btn" onclick="rendering=false; sandbox.clear();">Clear</a>
         <a class="waves-effect waves-light btn" id="renderBtn" onclick="draw();">Render</a>
       </div>
-      
+
       <div class="button-row">
         <a class="waves-effect waves-light btn" id="compileBtn" onclick="recompile()">Compile</a>
         <a class="waves-effect waves-light btn" id="liveBtn" onclick="updateParams(this);">Live</a>
       </div>
-      
+
       <div class="button-row">
         <a class="waves-effect waves-light btn modal-trigger" id="infoBtn" href="#modal1">Controls</a>
       </div>
@@ -141,7 +149,8 @@
       <!--   Scene modifier wrapper   -->
       <div id="scene_wrapper">
         Current Scene:<br>
-        <textarea id="scene" oninput='this.style.height = "1px"; this.style.height = this.scrollHeight+"px"; $("#compileBtn").css("background", "linear-gradient(135deg, #dc2626, #ef4444)"); is_live = false; $("#liveBtn").css("background-color", "rgb(105, 105, 105)");'>MAT_METAL, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
+        <textarea id="scene"
+          oninput='this.style.height = "1px"; this.style.height = this.scrollHeight+"px"; $("#compileBtn").css("background", "linear-gradient(135deg, #dc2626, #ef4444)"); is_live = false; $("#liveBtn").css("background-color", "rgb(105, 105, 105)");'>MAT_METAL, SDF, vec3(0.0, -0.49, 0.0), vec4(1.0)
 MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
       </div>
 
@@ -156,7 +165,10 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
   <div id="modal1" class="modal">
     <div class="modal-content">
       <p>
-        <b>Controls:</b><br> W/A/S/D/Q/E to modify camera's origin,<br> UP/LEFT/DOWN/RIGHT arrow to modify camera's concentration point position,<br> 1/! to increase/decrease the field of view,<br> 2/@ to increase/decrease the aperture size,<br> 3/# to increase/decrease the focal length,<br> SPACE to reset camera,<br> R to reset view direction,<br> Esc to stop
+        <b>Controls:</b><br> W/A/S/D/Q/E to modify camera's origin,<br> UP/LEFT/DOWN/RIGHT arrow to modify camera's
+        concentration point position,<br> 1/! to increase/decrease the field of view,<br> 2/@ to increase/decrease the
+        aperture size,<br> 3/# to increase/decrease the focal length,<br> SPACE to reset camera,<br> R to reset view
+        direction,<br> Esc to stop
       </p>
     </div>
     <div class="modal-footer">
@@ -187,20 +199,20 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     $("#size_select #default_size").html(Math.round(w_size) + "x" + Math.round(w_size));
 
     let shaders = [{
-        "name": 'vertex_shader',
-        "type": 'vert',
-        "filepath": "shaders/vert.glsl"
-      },
-      {
-        "name": 'raytracing_shader',
-        "type": 'frag',
-        "filepath": "shaders/pathtracing/raytracer.glsl"
-      },
-      {
-        "name": 'display_shader',
-        "type": 'frag',
-        "filepath": "shaders/tonemapper.glsl"
-      }
+      "name": 'vertex_shader',
+      "type": 'vert',
+      "filepath": "shaders/vert.glsl"
+    },
+    {
+      "name": 'raytracing_shader',
+      "type": 'frag',
+      "filepath": "shaders/pathtracing/raytracer.glsl"
+    },
+    {
+      "name": 'display_shader',
+      "type": 'frag',
+      "filepath": "shaders/tonemapper.glsl"
+    }
     ];
 
     let sandbox = new GlslViewport(null, {
@@ -222,7 +234,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
       preserveDrawingBuffer: false
     });
 
-    document.addEventListener("textures_loaded", function() {
+    document.addEventListener("textures_loaded", function () {
       document.getElementById("ff").attributes.removeNamedItem("hidden");
       $("#intro h4").html("WebGL Pathtracer");
       size_select(-1);
@@ -239,7 +251,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
 
     let lastDownTarget = undefined;
 
-    document.addEventListener('mousedown', function(evt) {
+    document.addEventListener('mousedown', function (evt) {
       lastDownTarget = evt.target;
 
     }, false);
@@ -251,7 +263,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     let flagY = false;
     let flagZ = false;
 
-    document.addEventListener('keydown', function(evt) {
+    document.addEventListener('keydown', function (evt) {
 
       if (lastDownTarget == $("#glslViewport canvas").get(0)) {
         let gl = sandbox.gl;
@@ -366,9 +378,16 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
 
     let rendering = false;
     let is_live = false;
+
+    function markNeedsRecompilation() {
+      $("#compileBtn").css("background", "linear-gradient(135deg, #dc2626, #ef4444)");
+      is_live = false;
+      $("#liveBtn").css("background-color", "rgb(105, 105, 105)");
+    }
+
     function updateParams(el) {
 
-      if(el.id == "liveBtn"){
+      if (el.id == "liveBtn") {
         is_live = !is_live;
         $("#liveBtn").css("background-color", is_live ? "rgb(255, 0, 0)" : "rgb(105, 105, 105)");
       } else if (el.type == "range") {
@@ -412,7 +431,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
           sandbox.defines[0] = el.checked ? "#define USE_CUBEMAP" : "//#define USE_CUBEMAP";
           console.log("Updated USE_CUBEMAP:", sandbox.defines[0]);
           markNeedsRecompilation();
-          
+
           // Disable PROCEDURAL SKY when CUBEMAP is enabled
           if (el.checked) {
             $("#u_procedural_sky").prop('checked', false);
@@ -423,7 +442,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
           sandbox.defines[1] = el.checked ? "#define USE_PROCEDURAL_SKY" : "//#define USE_PROCEDURAL_SKY";
           console.log("Updated USE_PROCEDURAL_SKY:", sandbox.defines[1]);
           markNeedsRecompilation();
-          
+
           // Disable CUBEMAP when PROCEDURAL SKY is enabled
           if (el.checked) {
             $("#u_cubemap").prop('checked', false);
@@ -441,6 +460,10 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
         } else if (el.id == "use_mis") {
           sandbox.constants[8] = "const bool use_mis = " + el.checked + ";";
           console.log("Updated use_mis:", sandbox.constants[8]);
+          markNeedsRecompilation();
+        } else if (el.id == "use_restir") {
+          sandbox.constants[9] = "const bool use_restir = " + el.checked + ";";
+          console.log("Updated use_restir:", sandbox.constants[9]);
           markNeedsRecompilation();
         } else if (el.id == "u_biDirectional") {
           sandbox.defines[3] = el.checked ? "#define USE_BIDIRECTIONAL" : "//#define USE_BIDIRECTIONAL";
@@ -520,7 +543,7 @@ const Mesh meshes[NUM_MESHES + NUM_SDFS + NUM_MODELS] = Mesh[](
 
 // light index
 const lowp int light_index[` + light_indices.length + `] = int[](
-` + light_indices.join("\n") + `
+` + light_indices.join(", ") + `
 );`;
 
           let sdf_html = [];
@@ -569,7 +592,7 @@ const lowp int light_index[` + light_indices.length + `] = int[](
           // update sdf_meshes selector
           $("#sdf_meshes").html(sdf_html.join("\n"));
           $('select').material_select();
-          
+
           // Mark that recompilation is needed for scene changes
           if (el.dn_highlight === false) {
             markNeedsRecompilation();
@@ -581,10 +604,10 @@ const lowp int light_index[` + light_indices.length + `] = int[](
 
       rendering = false;
       // Only mark for recompilation if this is a user-initiated change (not internal updates)
-      if (el.dn_highlight == false || el.type == "checkbox" || el.type == "range"){
+      if (el.dn_highlight == false || el.type == "checkbox" || el.type == "range") {
         // Scene changes and checkbox/range changes need recompilation
         // No need to call markNeedsRecompilation() again since it's already called above for specific cases
-      } 
+      }
       sandbox.clear();
       sandbox.passes = 0;
     }
@@ -709,6 +732,108 @@ MAT_WHITE, SDF, vec3(0.0, 1.0, 0.0), vec4(0.8, 0.1, 0.8, 0.0)`;
 
         sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
         sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      } else if (val == 5) { // ReSTIR Demo Scene - Complex scene with many lights
+        scene_el.value = `MAT_WHITE, PLANE, vec3(0.0, 1.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, -1.0, 0.0), vec4(2.0)
+MAT_GREEN, PLANE, vec3(1.0, 0.0, 0.0), vec4(2.0)
+MAT_RED, PLANE, vec3(-1.0, 0.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, 1.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, -1.0), vec4(2.0)
+MAT_LIGHT_4, SPHERE, vec3(-0.8, 1.8, -0.8), vec4(0.03)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.8, 1.8, -0.8), vec4(0.03)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-0.8, 1.8, 0.8), vec4(0.03)
+MAT_LIGHT_4, SPHERE, vec3(0.8, 1.8, 0.8), vec4(0.03)
+MAT_LIGHT_4, SPHERE, vec3(0.0, 1.8, 0.0), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-0.4, 1.6, -0.4), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.4, 1.6, -0.4), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(-0.4, 1.6, 0.4), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.4, 1.6, 0.4), vec4(0.02)
+MAT_REFR_CLEAR, SPHERE, vec3(-0.5, -0.5, 0.0), vec4(0.4)
+MAT_MIRROR, SPHERE, vec3(0.5, -0.5, 0.0), vec4(0.4)
+MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.3, 0.05, 0.3, 0.0)`;
+
+        enabled[0] = false;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(1); // RoundBox SDF in center
+        $('select').material_select();
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      } else if (val == 6) { // ReSTIR Heavy Demo Scene - Many lights to showcase ReSTIR advantages
+        scene_el.value = `MAT_WHITE, PLANE, vec3(0.0, 1.0, 0.0), vec4(3.0)
+MAT_WHITE, PLANE, vec3(0.0, -1.0, 0.0), vec4(3.0)
+MAT_GREEN, PLANE, vec3(1.0, 0.0, 0.0), vec4(3.0)
+MAT_RED, PLANE, vec3(-1.0, 0.0, 0.0), vec4(3.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, 1.0), vec4(3.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, -1.0), vec4(3.0)
+MAT_LIGHT_4, SPHERE, vec3(-1.2, 1.9, -1.2), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-0.6, 1.9, -1.2), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.0, 1.9, -1.2), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(0.6, 1.9, -1.2), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(1.2, 1.9, -1.2), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-1.2, 1.9, -0.6), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(-0.6, 1.9, -0.6), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.0, 1.9, -0.6), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.6, 1.9, -0.6), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(1.2, 1.9, -0.6), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-1.2, 1.9, 0.0), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-0.6, 1.9, 0.0), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(0.0, 1.9, 0.0), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.6, 1.9, 0.0), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(1.2, 1.9, 0.0), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(-1.2, 1.9, 0.6), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-0.6, 1.9, 0.6), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.0, 1.9, 0.6), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(0.6, 1.9, 0.6), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(1.2, 1.9, 0.6), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-1.2, 1.9, 1.2), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(-0.6, 1.9, 1.2), vec4(0.02)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.0, 1.9, 1.2), vec4(0.02)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.6, 1.9, 1.2), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(1.2, 1.9, 1.2), vec4(0.02)
+MAT_LIGHT_4, SPHERE, vec3(-0.9, 1.5, -0.9), vec4(0.015)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-0.3, 1.5, -0.9), vec4(0.015)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.3, 1.5, -0.9), vec4(0.015)
+MAT_LIGHT_4, SPHERE, vec3(0.9, 1.5, -0.9), vec4(0.015)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-0.9, 1.5, -0.3), vec4(0.015)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-0.3, 1.5, -0.3), vec4(0.015)
+MAT_LIGHT_4, SPHERE, vec3(0.3, 1.5, -0.3), vec4(0.015)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.9, 1.5, -0.3), vec4(0.015)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-0.9, 1.5, 0.3), vec4(0.015)
+MAT_LIGHT_4, SPHERE, vec3(-0.3, 1.5, 0.3), vec4(0.015)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.3, 1.5, 0.3), vec4(0.015)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.9, 1.5, 0.3), vec4(0.015)
+MAT_LIGHT_4, SPHERE, vec3(-0.9, 1.5, 0.9), vec4(0.015)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-0.3, 1.5, 0.9), vec4(0.015)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.3, 1.5, 0.9), vec4(0.015)
+MAT_LIGHT_4, SPHERE, vec3(0.9, 1.5, 0.9), vec4(0.015)
+MAT_REFR_CLEAR, SPHERE, vec3(-0.7, -0.5, 0.0), vec4(0.3)
+MAT_MIRROR, SPHERE, vec3(0.7, -0.5, 0.0), vec4(0.3)
+MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.4, 0.05, 0.4, 0.0)`;
+
+        enabled[0] = false;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(1); // RoundBox SDF in center
+        $('select').material_select();
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 2.5);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
       }
 
       // Cubemap
@@ -745,7 +870,7 @@ MAT_WHITE, SDF, vec3(0.0, 1.0, 0.0), vec4(0.8, 0.1, 0.8, 0.0)`;
 
       scene_el.style.height = "1px";
       scene_el.style.height = scene_el.scrollHeight + "px";
-      
+
       // Mark that recompilation is needed when scene is changed
       markNeedsRecompilation();
     }
@@ -780,8 +905,8 @@ MAT_WHITE, SDF, vec3(0.0, 1.0, 0.0), vec4(0.8, 0.1, 0.8, 0.0)`;
     }
 
     function needsRecompilation() {
-      return $("#compileBtn").css("background").indexOf("rgb(220, 38, 38)") !== -1 || 
-             $("#compileBtn").css("background").indexOf("#dc2626") !== -1;
+      return $("#compileBtn").css("background").indexOf("rgb(220, 38, 38)") !== -1 ||
+        $("#compileBtn").css("background").indexOf("#dc2626") !== -1;
     }
 
     function markNeedsRecompilation() {
@@ -809,7 +934,7 @@ MAT_WHITE, SDF, vec3(0.0, 1.0, 0.0), vec4(0.8, 0.1, 0.8, 0.0)`;
       // tile rendering
       if (sandbox.tile_rendering && sandbox.tile_size != 0 && sandbox.passes >= sandbox.max_passes) sandbox.updateTile();
 
-      if(is_live){
+      if (is_live) {
         window.requestAnimFrame(RenderLoop)
       } else {
         if (rendering && sandbox.passes < sandbox.max_passes) {
@@ -831,7 +956,7 @@ MAT_WHITE, SDF, vec3(0.0, 1.0, 0.0), vec4(0.8, 0.1, 0.8, 0.0)`;
         console.log("Auto-recompiling shader before rendering...");
         recompile();
       }
-      
+
       rendering = !rendering;
       document.getElementById("renderBtn").innerHTML = rendering ? "STOP" : "RENDER";
       if (rendering) sandbox.clear();
@@ -842,7 +967,7 @@ MAT_WHITE, SDF, vec3(0.0, 1.0, 0.0), vec4(0.8, 0.1, 0.8, 0.0)`;
       if (rendering) !(sandbox.passes = 0) && (sandbox.loadTime = performance.now()) && RenderLoop();
     }
 
-    $(document).ready(function() {
+    $(document).ready(function () {
       $('select').material_select();
       $('.modal').modal();
 

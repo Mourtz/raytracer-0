@@ -25,7 +25,9 @@ class GlslViewport {
       "const lowp float FUDGE_FACTOR = 0.9;",
       "const bool sample_lights = true;",
       "const bool use_mis = false;",
-      "const lowp int LIGHT_PATH_LENGTH = 2;"
+      "const bool use_restir = false;",
+      "const lowp int LIGHT_PATH_LENGTH = 2;",
+      "const lowp int RESTIR_SAMPLES = 16;"
     ];
 
     this.scene = `//--------------------- EUCLIDEAN/QUADRIC PARAMS --------------------------------
