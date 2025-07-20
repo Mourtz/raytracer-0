@@ -1148,10 +1148,10 @@ void finalizeReservoir(inout Reservoir r, vec3 hit_pos, vec3 hit_normal) {
         float distance_sq = dot(r.light_pos - hit_pos, r.light_pos - hit_pos);
         float cos_theta = max(0.0, dot(hit_normal, light_dir));
         
-        float target_pdf = cos_theta / (distance_sq + 1.0);
+        float target_pdf = length(r.light_color) * cos_theta / max(distance_sq, 1.0);
         
         if (target_pdf > 0.0) {
-            r.W = r.weight_sum / (r.M * target_pdf);
+            r.W = (1.0 / r.M) * (r.weight_sum / target_pdf);
         } else {
             r.W = 0.0;
         }
@@ -1186,18 +1186,20 @@ vec3 sampleLightsReSTIR(vec3 hit_pos, vec3 hit_normal, vec2 rand_seed) {
         
         vec3 light_contribution = calcDirectLighting(meshes[light_idx], hit_pos, hit_normal, rand_seed.x + float(i) * 123.456);
         
-        float target_value = length(light_contribution);
+        vec3 light_dir = normalize(meshes[light_idx].pos - hit_pos);
+        float distance_sq = dot(meshes[light_idx].pos - hit_pos, meshes[light_idx].pos - hit_pos);
+        float cos_theta = max(0.0, dot(hit_normal, light_dir));
+        
+        // Target function for ReSTIR: combines BRDF, light contribution, and geometry
+        float target_value = length(light_contribution) * cos_theta / max(distance_sq, 1.0);
         
         if (target_value > 0.0) {
             updateReservoir(reservoir, meshes[light_idx].pos, light_contribution, target_value, rand_val.y);
         }
     }
     
-    if (reservoir.weight_sum > 0.0 && reservoir.M > 0.0) {
-        reservoir.W = 1.0 / reservoir.M;
-    } else {
-        reservoir.W = 0.0;
-    }
+    // Proper ReSTIR weight calculation: W = (1/M) * (weight_sum / target_pdf)
+    finalizeReservoir(reservoir, hit_pos, hit_normal);
     
     if (reservoir.W > 0.0) {
         return reservoir.light_color * reservoir.W;
