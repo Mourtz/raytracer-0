@@ -57,6 +57,13 @@ const float FOUR_PI           =   12.5663706;
 const float RAD               =   0.01745329;
 const float E                 =   2.71828183;
 
+// Performance constants for light sampling
+const float kImportanceThreshold = 0.001;
+const float kSeedA = 8652.1;
+const float kSeedB = 5681.123;
+const float kSeedC = 7895.13;
+const float kSeedD = 123.456;
+
 const lowp int NULL =  -1;
 
 //-------------------------------
@@ -519,7 +526,7 @@ float siggraph_obj( vec3 p ){
 	vec3 ce = vec3(0.0,-0.2,-0.2);
 
 	float d1 = dot(p,ax) - 0.1;
-    float d2 = length(p) - 1.0;
+  float d2 = length(p) - 1.0;
 	float d3 = length( p-ce - ax*dot(p-ce,ax)) - 1.0;
 
 	return max( max( d1, d2 ), -d3 );
@@ -1027,12 +1034,12 @@ vec3 getRandomDirection(vec3 n, float seed){
 
 vec3 randomSphereDirection(float seed){
 	vec2 r = hash2(vec2(seed))*TWO_PI;
-    return vec3(sin(r.x)*vec2(sin(r.y),cos(r.y)),cos(r.x));
+  return vec3(sin(r.x)*vec2(sin(r.y),cos(r.y)),cos(r.x));
 }
 
 vec3 randomHemisphereDirection(vec3 n, float seed){
-	vec3 dr = randomSphereDirection(seed);
-	return dot(dr,n) < 0.0 ? -dr : dr;
+  vec3 dr = randomSphereDirection(seed);
+  return dot(dr,n) < 0.0 ? -dr : dr;
 }
 
 vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
@@ -1311,27 +1318,26 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
           int high_importance_lights = min(6, num_lights); 
           
           for(int i = 0; i < high_importance_lights; ++i){
-            if(light_index[i] < 0) continue;
-            
-            Mesh light = meshes[light_index[i]];
+            int idx = light_index[i];
+            if(idx < 0) continue;
+            Mesh light = meshes[idx];
             if(light.mat.t != LIGHT) continue;
-            
-            vec3 light_dir = normalize(light.pos - x);
-            float distance_sq = dot(light.pos - x, light.pos - x);
+
+            vec3 light_vec = light.pos - x;
+            vec3 light_dir = normalize(light_vec);
+            float distance_sq = dot(light_vec, light_vec);
             float cos_theta = max(0.0, dot(nl, light_dir));
-            float importance = cos_theta * length(light.mat.e) / (distance_sq + 1.0);
-            
-            if (importance > 0.001) {
-              vec3 lightSample = calcDirectLighting(light, x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13 + float(i)*123.456);
-              
-              if(length(lightSample) > 0.001) {
-                float lightPdf = lightSamplingPdf(light, x, light_dir);
-                float brdfPdf = cosineHemispherePdf(light_dir, nl);
-                float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
-                
-                misContribution += lightSample * misWeight * importance;
-              }
-            }
+            float importance = cos_theta * length(light.mat.e) * inversesqrt(distance_sq + 1.0);
+
+            float impStep = step(kImportanceThreshold, importance);
+            vec3 lightSample = calcDirectLighting(light, x, nl, seed + kSeedA*float(u_frame) + kSeedB + bounce*kSeedC + float(i)*kSeedD);
+            float sampleLen = length(lightSample);
+            float sampleStep = step(kImportanceThreshold, sampleLen);
+            float valid = impStep * sampleStep;
+            float lightPdf = lightSamplingPdf(light, x, light_dir);
+            float brdfPdf = cosineHemispherePdf(light_dir, nl);
+            float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
+            misContribution += lightSample * misWeight * importance * valid;
           }
           
           if (high_importance_lights > 0) {
@@ -1344,43 +1350,44 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
           float totalImportance = 0.0;
           
           for(int i = 0; i < num_lights; ++i){
-            if(light_index[i] < 0) continue;
-            
-            Mesh light = meshes[light_index[i]];
+            int idx = light_index[i];
+            if(idx < 0) continue;
+            Mesh light = meshes[idx];
             if(light.mat.t != LIGHT) continue;
-            
-            vec3 light_dir = normalize(light.pos - x);
-            float distance_sq = dot(light.pos - x, light.pos - x);
+
+            vec3 light_vec = light.pos - x;
+            vec3 light_dir = normalize(light_vec);
+            float distance_sq = dot(light_vec, light_vec);
             float cos_theta = max(0.0, dot(nl, light_dir));
-            float importance = cos_theta * length(light.mat.e) / (distance_sq + 1.0);
+            float importance = cos_theta * length(light.mat.e) * inversesqrt(distance_sq + 1.0);
             totalImportance += importance;
           }
           
           for(int i = 0; i < num_lights; ++i){
-            if(light_index[i] < 0) continue;
-            
-            Mesh light = meshes[light_index[i]];
+            int idx = light_index[i];
+            if(idx < 0) continue;
+            Mesh light = meshes[idx];
             if(light.mat.t != LIGHT) continue;
-            
-            vec3 light_dir = normalize(light.pos - x);
-            float distance_sq = dot(light.pos - x, light.pos - x);
+
+            vec3 light_vec = light.pos - x;
+            vec3 light_dir = normalize(light_vec);
+            float distance_sq = dot(light_vec, light_vec);
             float cos_theta = max(0.0, dot(nl, light_dir));
-            float importance = cos_theta * length(light.mat.e) / (distance_sq + 1.0);
-            
-            if (importance > 0.001 && totalImportance > 0.0) {
-              vec3 lightSample = calcDirectLighting(light, x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13 + float(i)*123.456);
-              
-              if(length(lightSample) > 0.001) {
-                float lightPdf = lightSamplingPdf(light, x, light_dir);
-                float brdfPdf = cosineHemispherePdf(light_dir, nl);
-                float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
-                float enhancedWeight = misWeight * (importance / totalImportance);
-                vec2 reservoir_rand = hash2(vec2(seed + float(i) * 123.456, bounce * 789.123));
-                if (reservoir_rand.x < enhancedWeight || i == 0) {
-                  enhancedMisContribution += lightSample * enhancedWeight;
-                }
-              }
-            }
+            float importance = cos_theta * length(light.mat.e) * inversesqrt(distance_sq + 1.0);
+
+            float impStep = step(kImportanceThreshold, importance);
+            float totalImpStep = step(0.0, totalImportance);
+            vec3 lightSample = calcDirectLighting(light, x, nl, seed + kSeedA*float(u_frame) + kSeedB + bounce*kSeedC + float(i)*kSeedD);
+            float sampleLen = length(lightSample);
+            float sampleStep = step(kImportanceThreshold, sampleLen);
+            float valid = impStep * totalImpStep * sampleStep;
+            float lightPdf = lightSamplingPdf(light, x, light_dir);
+            float brdfPdf = cosineHemispherePdf(light_dir, nl);
+            float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
+            float enhancedWeight = misWeight * (importance / max(totalImportance, 1e-6));
+            vec2 reservoir_rand = hash2(vec2(seed + float(i) * kSeedD, bounce * 789.123));
+            float reservoirValid = mix(float(reservoir_rand.x < enhancedWeight), 1.0, float(i == 0));
+            enhancedMisContribution += lightSample * enhancedWeight * valid * reservoirValid;
           }
           
           totalContribution = enhancedMisContribution;
