@@ -7,7 +7,7 @@ The renderer is highly modular, allowing users to toggle sophisticated features 
 On low end devices, the **GLSL** compiler is usually crashing due to the large amount of code
 that is being passed by the main **fragment** shader.
 Of course the amount of computational power needed to run the renderer depends on the complexity of the scene.
-On my current system I have a GTX 960m and the driver doesn't crash that regularly, so any graphics card with 1.5 GFLOPS and above should be running fine.
+On my current system I have a RTX 3070m (8GB VRAM) and the driver doesn't crash regularly, any graphics card with 10 TFLOPS in FP32 and with sufficient VRAM should be running fine.
 
 It seems to be working fine on Windows using Angle, Google Chrome is highly suggested as it gives me the lowest render times among
 of all the browsers I 've tested.
