@@ -1194,16 +1194,16 @@ struct Reservoir {
 
 const Reservoir EMPTY_RESERVOIR = Reservoir(vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0, -1);
 
-// Poisson disk samples for spatial resampling
+// Optimized Poisson disk samples for better spatial distribution
 const vec2 POISSON_DISK[8] = vec2[](
-    vec2(-0.7071, 0.7071),
-    vec2(-0.0000, -0.8750),
-    vec2(0.5303, 0.5303),
-    vec2(-0.6250, -0.0000),
-    vec2(0.3536, -0.3536),
-    vec2(-0.0000, 0.1250),
-    vec2(0.8750, 0.0000),
-    vec2(-0.1768, 0.1768)
+    vec2(-0.4706, 0.4706),
+    vec2(0.8090, 0.2628),
+    vec2(-0.2628, -0.8090),
+    vec2(0.6882, -0.5000),
+    vec2(-0.9511, -0.1625),
+    vec2(0.1625, 0.9511),
+    vec2(0.5000, -0.6882),
+    vec2(-0.6882, 0.5000)
 );
 #endif // USE_RESTIR
 
@@ -1262,7 +1262,7 @@ bool isValidReservoir(const Reservoir r) {
     
     if (length(r.light_color) < 0.001 || length(r.light_color) > 100.0) return false;
     
-    if (r.light_index < -1 || r.light_index >= int(light_index.length())) return false;
+    if (r.light_index >= int(light_index.length()) && r.light_index != -1) return false;
     
     if (length(r.light_pos) < EPSILON && r.light_index >= 0) return false;
     
@@ -1309,14 +1309,14 @@ float evaluateTargetFunction(const vec3 light_pos, const vec3 light_color, const
     float attenuation = 1.0 / (0.1 + distance * 0.05 + distance_sq * 0.001); // Gentler falloff
     float geometric_term = cos_theta * attenuation;
     
-    // Final target function value with ReSTIR-specific scaling
+    // Final target function value (no arbitrary scaling)
     float target_value = brdf_value * light_intensity * geometric_term;
     
-    // Scale appropriately for ReSTIR weights (critical for proper operation)
-    target_value *= 4.0; // Boost target function values for better ReSTIR sampling
+    // Apply physically-based normalization
+    target_value *= PI; // Account for hemisphere integration
     
-    // Clamp to prevent extreme values but allow reasonable dynamic range
-    return clamp(target_value, 0.01, 100.0);
+    // Clamp to prevent extreme values while maintaining physical meaning
+    return clamp(target_value, 0.001, 50.0);
 }
 // Optimized visibility test using shadow ray tracing
 bool isVisible(const vec3 from_pos, const vec3 to_pos) {
@@ -1536,8 +1536,12 @@ void combineReservoirs(inout Reservoir target, const Reservoir source, const vec
     target.weight_sum += source_contribution;
     target.M += source.M;
     
-    // Clamp M to prevent excessive accumulation (reduced from 80.0)
-    target.M = clamp(target.M, 1.0, 50.0);
+    // Apply exponential decay instead of hard clamping for better bias-variance tradeoff
+    if (target.M > 40.0) {
+        float decay_factor = exp(-0.1 * (target.M - 40.0));
+        target.M *= decay_factor;
+        target.weight_sum *= decay_factor;
+    }
     
     // Update selected sample with probability proportional to contribution
     if (target.weight_sum > 0.0) {
@@ -1683,44 +1687,38 @@ vec3 sampleLightsReSTIR(const vec3 hit_pos, const vec3 hit_normal, const Materia
         Reservoir neighbor_reservoir = sampleSpatialReservoir(neighbor_coord, hit_pos, hit_normal);
         
         if (neighbor_reservoir.M > 0.0) {
-            // Simplified spatial validation - focus on essential checks only
+            // Optimized spatial validation with early exits
             bool is_valid = true;
             
-            // 1. Check spatial coordinate bounds
-            if (neighbor_coord.x < 0.0 || neighbor_coord.x > 1.0 || 
-                neighbor_coord.y < 0.0 || neighbor_coord.y > 1.0) {
+            // Early bounds check
+            if (any(lessThan(neighbor_coord, vec2(0.0))) || any(greaterThan(neighbor_coord, vec2(1.0)))) {
                 is_valid = false;
             }
             
-            // 2. Basic distance check for spatial coherence
-            vec2 coord_diff = neighbor_coord - screen_coord;
-            float coord_distance = length(coord_diff);
-            if (coord_distance > SPATIAL_RADIUS / min(u_resolution.x, u_resolution.y)) {
-                is_valid = false;
-            }
-            
-            // 3. Light distance validity check (prevent very distant lights)
-            if (neighbor_reservoir.light_index >= 0) {
-                float light_distance = length(neighbor_reservoir.light_pos - hit_pos);
-                if (light_distance > 15.0) { // Reasonable light distance limit
+            if (is_valid) {
+                // Distance-based coherence check
+                vec2 coord_diff = neighbor_coord - screen_coord;
+                float coord_distance_sq = dot(coord_diff, coord_diff);
+                float max_distance_sq = pow(SPATIAL_RADIUS / min(u_resolution.x, u_resolution.y), 2.0);
+                
+                if (coord_distance_sq > max_distance_sq) {
                     is_valid = false;
                 }
             }
             
-            // 4. Age-based rejection (prevent very old samples)
-            if (neighbor_reservoir.age > float(MAX_RESERVOIR_AGE) * 0.8) {
-                is_valid = false;
+            if (is_valid && neighbor_reservoir.light_index >= 0) {
+                // Light distance check with squared distance for efficiency
+                vec3 light_diff = neighbor_reservoir.light_pos - hit_pos;
+                float light_distance_sq = dot(light_diff, light_diff);
+                if (light_distance_sq > 225.0) { // 15.0^2
+                    is_valid = false;
+                }
             }
             
-            // 5. Random rejection for quality (reduce correlation)
-            if (spatial_rand.x < 0.05) { // Reject 5% randomly (reduced from 10%)
-                is_valid = false;
-            }
-            
-            // 6. Additional validation for animated scenes
-            if (RENDER_MODE == 1) {
-                // Be more conservative with spatial reuse in animated scenes
-                if (neighbor_reservoir.age > 2.0) {
+            if (is_valid) {
+                // Age and quality checks
+                float age_threshold = RENDER_MODE == 1 ? 2.0 : float(MAX_RESERVOIR_AGE) * 0.8;
+                if (neighbor_reservoir.age > age_threshold || spatial_rand.x < 0.03) {
                     is_valid = false;
                 }
             }

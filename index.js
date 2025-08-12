@@ -773,26 +773,22 @@ const lowp int light_index[1] = int[](-1);`;
   }
 
   swapReSTIRBuffers() {
-    // Enhanced ReSTIR buffer management with proper 2-frame temporal history
-    // History chain: Current -> History1 -> History2 -> (discard)
+    let old_history2 = this.textures["restir_history2_tex"];
+    let old_history2_aux = this.textures["restir_history2_aux_tex"];
     
-    // Store current history1 as history2 (move older frame further back)
-    let temp_history2 = this.textures["restir_history2_tex"];
-    let temp_history2_aux = this.textures["restir_history2_aux_tex"];
-    
-    // History1 becomes History2
+    // Shift history: History1 -> History2
     this.textures["restir_history2_tex"] = this.textures["restir_history1_tex"];
     this.textures["restir_history2_aux_tex"] = this.textures["restir_history1_aux_tex"];
     
-    // Current back buffer becomes History1
+    // Current back -> History1
     this.textures["restir_history1_tex"] = this.textures["restir_buffer_back_tex"];
     this.textures["restir_history1_aux_tex"] = this.textures["restir_aux_back_tex"];
     
-    // Reuse old history2 buffers as new back buffers (efficient recycling)
-    this.textures["restir_buffer_back_tex"] = temp_history2;
-    this.textures["restir_aux_back_tex"] = temp_history2_aux;
+    // Recycle old history2 as new back buffer
+    this.textures["restir_buffer_back_tex"] = old_history2;
+    this.textures["restir_aux_back_tex"] = old_history2_aux;
     
-    // Standard front/back swap for current frame
+    // Standard ping-pong swap for current frame
     let temp_restir = this.textures["restir_buffer_tex"];
     let temp_aux = this.textures["restir_aux_tex"];
 
