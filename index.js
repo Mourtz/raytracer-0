@@ -12,7 +12,8 @@ class GlslViewport {
       "#define USE_CUBEMAP",
       "//#define USE_PROCEDURAL_SKY",
       "#define USE_BIASED_SAMPLING",
-      "//#define USE_BIDIRECTIONAL"
+      "//#define USE_BIDIRECTIONAL",
+      "//#define USE_RESTIR"
     ];
 
     this.constants = [
@@ -27,7 +28,25 @@ class GlslViewport {
       "const bool use_mis = false;",
       "const bool use_restir = false;",
       "const lowp int LIGHT_PATH_LENGTH = 2;",
-      "const lowp int RESTIR_SAMPLES = 16;"
+      "const lowp int RESTIR_SAMPLES = 16;",
+      "const lowp int RENDER_MODE = 0;"
+    ];
+
+    // Optimized constants for animated scenes
+    this.animatedConstants = [
+      "const lowp int MAX_BOUNCES = 6;",
+      "const lowp int MAX_DIFF_BOUNCES = 2;",
+      "const lowp int MAX_SPEC_BOUNCES = 2;",
+      "const lowp int MAX_TRANS_BOUNCES = 4;",
+      "const lowp int MAX_SCATTERING_EVENTS = 4;",
+      "const mediump int MARCHING_STEPS = 64;",
+      "const lowp float FUDGE_FACTOR = 0.9;",
+      "const bool sample_lights = true;",
+      "const bool use_mis = false;",
+      "const bool use_restir = true;",
+      "const lowp int LIGHT_PATH_LENGTH = 1;",
+      "const lowp int RESTIR_SAMPLES = 8;",
+      "const lowp int RENDER_MODE = 1;"
     ];
 
     this.scene = `//--------------------- EUCLIDEAN/QUADRIC PARAMS --------------------------------
@@ -51,8 +70,8 @@ const Mesh meshes[NUM_MESHES + NUM_SDFS + NUM_MODELS] = Mesh[](
 const lowp int light_index[1] = int[](-1);`;
 
     this.sdf_meshes = [
-      "sdf_meshes[0] = vec2(sdBox(p-meshes[NUM_MESHES + 0].pos, meshes[NUM_MESHES + 0].joker.xyz), 0.0);",
-      "sdf_meshes[1] = vec2(sdBox(p-meshes[NUM_MESHES + 1].pos, meshes[NUM_MESHES + 1].joker.xyz), 1.0);"
+      "sdf_meshes[0] = vec2(sdBox(p-getAnimatedPosition(meshes[NUM_MESHES + 0].pos, NUM_MESHES + 0, u_time), meshes[NUM_MESHES + 0].joker.xyz), 0.0);",
+      "sdf_meshes[1] = vec2(sdBox(p-getAnimatedPosition(meshes[NUM_MESHES + 1].pos, NUM_MESHES + 1, u_time), meshes[NUM_MESHES + 1].joker.xyz), 1.0);"
     ];
 
     this.camera = {
@@ -81,7 +100,6 @@ const lowp int light_index[1] = int[](-1);`;
     gl.getExtension('WEBGL_lose_context');
     gl.getExtension('EXT_color_buffer_float');
     gl.getExtension('OES_texture_float_linear');
-    //    this.debug_shader = gl.getExtension('WEBGL_debug_shaders');
 
     this.gl = gl; // GL Instance
     this.loadTime = performance.now(); // load time
@@ -93,13 +111,29 @@ const lowp int light_index[1] = int[](-1);`;
     }; // loaded gl textures
 
     this.frontTarget = {
-      framebuffer: this.createFramebuffer({
-        name: "front_target_tex",
-        width: this.canvas.width,
-        height: this.canvas.height,
-        color: [gl.RGBA32F, gl.RGBA],
-        type: gl.FLOAT
-      }),
+      framebuffer: this.createFramebuffer([
+        {
+          name: "front_target_tex",
+          width: this.canvas.width,
+          height: this.canvas.height,
+          color: [gl.RGBA32F, gl.RGBA],
+          type: gl.FLOAT
+        },
+        {
+          name: "restir_buffer_tex",
+          width: this.canvas.width,
+          height: this.canvas.height,
+          color: [gl.RGBA32F, gl.RGBA],
+          type: gl.FLOAT
+        },
+        {
+          name: "restir_aux_tex",
+          width: this.canvas.width,
+          height: this.canvas.height,
+          color: [gl.RGBA32F, gl.RGBA],
+          type: gl.FLOAT
+        }
+      ]),
       uniforms: {
         "backbuffer": 0,
         "tex0": 1,
@@ -107,7 +141,11 @@ const lowp int light_index[1] = int[](-1);`;
         "tex2": 3,
         "tex3": 4,
         "rng_tex": 5,
-        "cubemap": 6
+        "cubemap": 6,
+        "restir_buffer": 7,
+        "restir_aux": 8,
+        "restir_history1": 9,
+        "restir_history1_aux": 10
       }
     }; // front render target
 
@@ -119,11 +157,63 @@ const lowp int light_index[1] = int[](-1);`;
       type: gl.FLOAT
     });
 
+    // ReSTIR back buffers for ping-pong
+    this.createTexture({
+      name: "restir_buffer_back_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_aux_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_aux_back_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    // Enhanced temporal history buffers for better ReSTIR temporal reuse (reduced to 2 levels)
+    // History buffer 1 (previous frame)
+    this.createTexture({
+      name: "restir_history1_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_history1_aux_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
     this.display = {}; // display program
+    this.debugDisplay = {}; // debug display program for showing all buffers
+    this.showAllBuffers = false; // flag to toggle multi-buffer view
+    this.debugDividerPos = [0.5, 0.5]; // divider position for debug view (x, y)
 
     this.paused = opts.paused || false; // is render loop paused
     this.passes = 0; // current passes
     this.max_passes = opts.max_passes || Infinity; // max passes
+
+    // Animation properties
+    this.animatedScene = false; // is current scene animated
+    this.animationStartTime = 0; // animation start time
+    this.lastAnimationUpdate = 0; // last animation update time
+    this.temporalFrames = 5; // number of frames to accumulate for animated scenes
 
     let vertexbuffer = gl.createBuffer(); // vertex buffer
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexbuffer);
@@ -141,9 +231,6 @@ const lowp int light_index[1] = int[](-1);`;
 
     this.frontTarget.program = this.createProgram([this.shaders["vertex_shader"], this.shaders["raytracing_shader"]]);
     this.updateFrontTarget();
-
-    //    this.genRandomTexture();
-    //    gl.activeTexture(gl.TEXTURE0);
 
     let sandbox = this;
 
@@ -242,88 +329,34 @@ const lowp int light_index[1] = int[](-1);`;
 
     gl.uniform1i(this.display.bufferA_ID, this.frontTarget["uniforms"]["backbuffer"]);
 
+    //---------------------------- DEBUG DISPLAY PROGRAM
+
+    this.debugDisplay.program = this.createProgram([this.shaders["vertex_shader"], this.shaders["debug_display_shader"]]);
+    gl.useProgram(this.debugDisplay.program);
+
+    this.debugDisplay.bufferA_ID = gl.getUniformLocation(this.debugDisplay.program, "u_bufferA");
+    this.debugDisplay.restir_buffer_ID = gl.getUniformLocation(this.debugDisplay.program, "u_restir_buffer");
+    this.debugDisplay.restir_aux_ID = gl.getUniformLocation(this.debugDisplay.program, "u_restir_aux");
+    // Enhanced temporal history buffers for debug display
+    this.debugDisplay.restir_history1_ID = gl.getUniformLocation(this.debugDisplay.program, "u_restir_history1");
+    this.debugDisplay.restir_history1_aux_ID = gl.getUniformLocation(this.debugDisplay.program, "u_restir_history1_aux");
+    this.debugDisplay.restir_history2_ID = gl.getUniformLocation(this.debugDisplay.program, "u_restir_history2");
+    this.debugDisplay.restir_history2_aux_ID = gl.getUniformLocation(this.debugDisplay.program, "u_restir_history2_aux");
+    this.debugDisplay.contributionID = gl.getUniformLocation(this.debugDisplay.program, "u_cont");
+    this.debugDisplay.resolutionID = gl.getUniformLocation(this.debugDisplay.program, "u_resolution");
+    this.debugDisplay.frameID = gl.getUniformLocation(this.debugDisplay.program, "u_frame");
+
+    gl.uniform1i(this.debugDisplay.bufferA_ID, this.frontTarget["uniforms"]["backbuffer"]);
+    gl.uniform1i(this.debugDisplay.restir_buffer_ID, this.frontTarget["uniforms"]["restir_buffer"]);
+    gl.uniform1i(this.debugDisplay.restir_aux_ID, this.frontTarget["uniforms"]["restir_aux"]);
+    // Bind enhanced temporal history buffers for debug display
+    gl.uniform1i(this.debugDisplay.restir_history1_ID, this.frontTarget["uniforms"]["restir_history1"]);
+    gl.uniform1i(this.debugDisplay.restir_history1_aux_ID, this.frontTarget["uniforms"]["restir_history1_aux"]);
+    gl.uniform1i(this.debugDisplay.restir_history2_ID, this.frontTarget["uniforms"]["restir_history2"]);
+    gl.uniform1i(this.debugDisplay.restir_history2_aux_ID, this.frontTarget["uniforms"]["restir_history2_aux"]);
+    gl.uniform2f(this.debugDisplay.resolutionID, this.canvas.width, this.canvas.height);
+
     if (this.tile_rendering) gl.viewport(0, 0, this.tile_size[0], this.tile_size[1]);
-
-    //------------ EVENTS ------------
-    let mouse = {
-      x: 0,
-      y: 0
-    }; // mouse position
-
-    //------------------------------- KEYBOARD --------------------------------
-    //    this.keyboardTexVal = new Uint8Array(256);
-    //    this.keyboardTex = this.createTexture({
-    //      name: "keyboard_tex",
-    //      width: 256,
-    //      height: 1,
-    //      color: [gl.R8, gl.RED],
-    //      ch: 1,
-    //      pixels: this.keyboardTexVal
-    //    });
-    //    let keyboardTexPos = this.textures["keyboard_tex"]["pos"];
-    //    gl.uniform1i(this.frontTarget.keyboardID, keyboardTexPos);
-
-    //    document.addEventListener("keyup", function (evt) {
-    //      sandbox.keyboardTexVal[evt.keyCode] = 0;
-    //
-    //      gl.activeTexture(gl.TEXTURE0 + keyboardTexPos);
-    //      gl.bindTexture(gl.TEXTURE_2D, sandbox.textures["keyboard_tex"]["tex"]);
-    //      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 256, 1, 0, gl.RED, gl.UNSIGNED_BYTE, sandbox.keyboardTexVal);
-    //
-    //    });
-
-    //------------------------- SDF SAMPLED ON A GRID -------------------------
-
-    //    let sdf0 = parseSDF("models/armadilo.sdf");
-    //    console.log(sdf0);
-    //    this.sdfTex = this.createTexture({
-    //      name: "sdf0",
-    //      width: sdf0.dimensions[0],
-    //      height: sdf0.dimensions[1],
-    //      depth: sdf0.dimensions[2],
-    //      color: [gl.R32F, gl.RED],
-    //      type: gl.FLOAT,
-    //      ch: 1,
-    //      pixels: sdf0.values
-    //    });
-    //    gl.uniform1i(this.frontTarget.sdf0_texID, this.textures["sdf0"]["pos"]);
-    //
-    //    // create sdf0 AABB Buffer
-    //    let sdf0_aabb = new Float32Array([
-    //      sdf0.bb_min[0], sdf0.bb_min[1], sdf0.bb_min[2], 0.0,
-    //      sdf0.bb_max[0], sdf0.bb_max[1], sdf0.bb_max[2], 0.0,
-    //    ]);
-    //
-    //    let sdf0_aabbBuffer = gl.createBuffer();
-    //    gl.bindBuffer(gl.UNIFORM_BUFFER, sdf0_aabbBuffer);
-    //    gl.bufferData(gl.UNIFORM_BUFFER, sdf0_aabb, gl.STATIC_DRAW);
-    //    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, sdf0_aabb);
-    //    gl.bindBuffer(gl.UNIFORM_BUFFER, null);
-    //
-    //    gl.uniformBlockBinding(this.frontTarget.program, this.frontTarget.sdf0_aabbID, 0);
-    //    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, sdf0_aabbBuffer);
-
-    //--------------------------------- MOUSE ---------------------------------
-
-    // mouse events
-    //    this.canvas.onmouseup = function () {
-    //      gl.uniform1i(sandbox.frontTarget.mouse_downID, 0);
-    //    };
-    //    this.canvas.onmousedown = function () {
-    //      gl.uniform1i(sandbox.frontTarget.mouse_downID, 1);
-    //    };
-    //    document.addEventListener('mousemove', (e) => {
-    //      mouse.x = e.clientX || e.pageX;
-    //      mouse.y = e.clientY || e.pageY;
-    //    }, false);
-
-    // on GL context lost
-    this.canvas.addEventListener("webglcontextlost", function (e) {
-      alert("Your gpu cant bear this buddy ;(");
-      EXT.restoreContext();
-    }, false);
-
-    //    this.setMouse(mouse);
 
     return this;
   }
@@ -340,13 +373,9 @@ const lowp int light_index[1] = int[](-1);`;
     this.frontTarget.camPosID = gl.getUniformLocation(this.frontTarget.program, "u_camPos"); // position
     this.frontTarget.camLookAtID = gl.getUniformLocation(this.frontTarget.program, "u_camLookAt"); // facing position
     this.frontTarget.camParamsID = gl.getUniformLocation(this.frontTarget.program, "u_camParams"); // parameters
+    this.frontTarget.temporalFramesID = gl.getUniformLocation(this.frontTarget.program, "u_temporalFrames"); // temporal frames
 
-    //    this.frontTarget.mouseID = gl.getUniformLocation(this.frontTarget.program, "u_mouse"); // mouse position
-    //    this.frontTarget.mouse_downID = gl.getUniformLocation(this.frontTarget.program, "u_mouse_down"); // is LMB down
-    //    this.frontTarget.keyboardID = gl.getUniformLocation(this.frontTarget.program, "u_keyboard"); // is LMB down
 
-    //    this.frontTarget.sdf0_texID = gl.getUniformLocation(this.frontTarget.program, "u_sdf0"); // canvas resolution
-    //    this.frontTarget.sdf0_aabbID = gl.getUniformBlockIndex(this.frontTarget.program, "u_sdf0_aabb"); // sdf0 AABB
 
     this.frontTarget.bufferA_ID = gl.getUniformLocation(this.frontTarget.program, "u_bufferA"); // bufferA texture2D
 
@@ -358,6 +387,14 @@ const lowp int light_index[1] = int[](-1);`;
     this.frontTarget.tex3_ID = gl.getUniformLocation(this.frontTarget.program, "u_tex3"); // tex3
 
     this.frontTarget.cubemap_ID = gl.getUniformLocation(this.frontTarget.program, "u_cubemap"); // cubemap
+    this.frontTarget.restir_buffer_ID = gl.getUniformLocation(this.frontTarget.program, "u_restir_buffer"); // ReSTIR buffer
+    this.frontTarget.restir_aux_ID = gl.getUniformLocation(this.frontTarget.program, "u_restir_aux"); // ReSTIR auxiliary buffer
+    
+    // Enhanced temporal history buffers
+    this.frontTarget.restir_history1_ID = gl.getUniformLocation(this.frontTarget.program, "u_restir_history1"); // ReSTIR history 1
+    this.frontTarget.restir_history1_aux_ID = gl.getUniformLocation(this.frontTarget.program, "u_restir_history1_aux"); // ReSTIR history 1 aux
+    this.frontTarget.restir_history2_ID = gl.getUniformLocation(this.frontTarget.program, "u_restir_history2"); // ReSTIR history 2
+    this.frontTarget.restir_history2_aux_ID = gl.getUniformLocation(this.frontTarget.program, "u_restir_history2_aux"); // ReSTIR history 2 aux
 
     gl.uniform2f(this.frontTarget.resolutionID, this.canvas.width, this.canvas.height);
 
@@ -372,6 +409,14 @@ const lowp int light_index[1] = int[](-1);`;
     gl.uniform1i(this.frontTarget.tex2_ID, this.frontTarget["uniforms"]["tex2"]);
     gl.uniform1i(this.frontTarget.tex3_ID, this.frontTarget["uniforms"]["tex3"]);
     gl.uniform1i(this.frontTarget.cubemap_ID, this.frontTarget["uniforms"]["cubemap"]);
+    gl.uniform1i(this.frontTarget.restir_buffer_ID, this.frontTarget["uniforms"]["restir_buffer"]);
+    gl.uniform1i(this.frontTarget.restir_aux_ID, this.frontTarget["uniforms"]["restir_aux"]);
+    
+    // Bind enhanced temporal history buffers
+    gl.uniform1i(this.frontTarget.restir_history1_ID, this.frontTarget["uniforms"]["restir_history1"]);
+    gl.uniform1i(this.frontTarget.restir_history1_aux_ID, this.frontTarget["uniforms"]["restir_history1_aux"]);
+    gl.uniform1i(this.frontTarget.restir_history2_ID, this.frontTarget["uniforms"]["restir_history2"]);
+    gl.uniform1i(this.frontTarget.restir_history2_aux_ID, this.frontTarget["uniforms"]["restir_history2_aux"]);
   }
 
   genRandomTexture() {
@@ -385,9 +430,9 @@ const lowp int light_index[1] = int[](-1);`;
       rngData[i * 4 + 3] = Math.random() * 4194167.0;
     }
 
-    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["rngData"]);
+    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["rng_tex"]);
     this.loadTexture({
-      name: "rngData",
+      name: "rnd_tex",
       width: this.canvas.width,
       height: this.canvas.height,
       color: [gl.RGBA32F, gl.RGBA],
@@ -449,6 +494,73 @@ const lowp int light_index[1] = int[](-1);`;
       color: [gl.RGBA32F, gl.RGBA],
       type: gl.FLOAT
     });
+
+    // Recreate ReSTIR buffers with new size
+    this.createTexture({
+      name: "restir_buffer_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_buffer_back_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_aux_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_aux_back_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    // Recreate enhanced temporal history buffers with new size
+    this.createTexture({
+      name: "restir_history1_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_history1_aux_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_history2_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_history2_aux_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
     gl.bindTexture(gl.TEXTURE_2D, null);
 
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -456,8 +568,9 @@ const lowp int light_index[1] = int[](-1);`;
     gl.useProgram(this.frontTarget.program);
     gl.uniform2f(this.frontTarget.resolutionID, this.canvas.width, this.canvas.height);
 
-    gl.useProgram(this.display.program);
-    gl.uniform2f(this.display.resolutionID, this.canvas.width, this.canvas.height);
+    // Update debug display resolution
+    gl.useProgram(this.debugDisplay.program);
+    gl.uniform2f(this.debugDisplay.resolutionID, this.canvas.width, this.canvas.height);
 
     if (!this.tile_rendering) gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   }
@@ -624,79 +737,7 @@ const lowp int light_index[1] = int[](-1);`;
     return framebuffer;
   }
 
-  setScene() {
-    let gl = this.gl;
 
-    let models = [];
-
-    models[0] = models[1] = models[2] = newModel(JSON.parse(fetchHTTP('/models/null.json')));
-
-    models[0] = newModel(JSON.parse(fetchHTTP('/models/gem.json')), {
-      color: [1., 1., 1.],
-      position: [0., -.5, 0.],
-      backface_culling: 1,
-      type: 4
-    });
-
-    //        let mesh = parseMesh(JSON.parse(fetchHTTP('/models/gem2.json')));
-    //        let bvh = new BVH();
-    //        bvh.Build(mesh);
-    //        console.log(bvh);
-
-    let sandbox = this;
-    models.forEach(function (model, i) {
-      //------------------------------------------------------------------------
-      //> model Texture
-      //------------------------------------------------------------------------
-      let modelTexture = gl.createTexture();
-      gl.activeTexture(gl.TEXTURE0 + sandbox.textures.length);
-      gl.bindTexture(gl.TEXTURE_2D_ARRAY, modelTexture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texImage3D(
-        gl.TEXTURE_2D_ARRAY,
-        0,
-        gl.RGB32F,
-        model.buffer_s,
-        model.buffer_s,
-        4,
-        0,
-        gl.RGB,
-        gl.FLOAT,
-        model.buffer);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.uniform1i(gl.getUniformLocation(sandbox.frontTarget.program, "u_model" + i), sandbox.textures.length);
-
-      sandbox.pushNewTexture("model" + i, modelTexture);
-
-      //------------------------------------------------------------------------
-      //> indices
-      //------------------------------------------------------------------------
-      let indicesTexture = gl.createTexture();
-      gl.activeTexture(gl.TEXTURE0 + sandbox.textures.length);
-      gl.bindTexture(gl.TEXTURE_2D, indicesTexture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB32UI, model.indices_s, model.indices_s, 0, gl.RGB_INTEGER, gl.UNSIGNED_INT, model.indices);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.uniform1i(gl.getUniformLocation(sandbox.frontTarget.program, "u_indices" + i), sandbox.textures.length);
-
-      sandbox.pushNewTexture("indices" + i, indicesTexture);
-    });
-
-  }
-
-  setMouse(mouse) {
-    let rect = this.canvas.getBoundingClientRect();
-    if (mouse &&
-      mouse.x && mouse.x >= rect.left && mouse.x <= rect.right &&
-      mouse.y && mouse.y >= rect.top && mouse.y <= rect.bottom) {
-
-      this.gl.uniform2f(this.frontTarget.mouseID, mouse.x - rect.left, this.canvas.height - (mouse.y - rect.top));
-    }
-  }
 
   updateTile() {
     let gl = this.gl;
@@ -731,6 +772,33 @@ const lowp int light_index[1] = int[](-1);`;
     gl.viewport(tile_min[0], tile_min[1], tile_max[0], tile_max[1]);
   }
 
+  swapReSTIRBuffers() {
+    let old_history2 = this.textures["restir_history2_tex"];
+    let old_history2_aux = this.textures["restir_history2_aux_tex"];
+    
+    // Shift history: History1 -> History2
+    this.textures["restir_history2_tex"] = this.textures["restir_history1_tex"];
+    this.textures["restir_history2_aux_tex"] = this.textures["restir_history1_aux_tex"];
+    
+    // Current back -> History1
+    this.textures["restir_history1_tex"] = this.textures["restir_buffer_back_tex"];
+    this.textures["restir_history1_aux_tex"] = this.textures["restir_aux_back_tex"];
+    
+    // Recycle old history2 as new back buffer
+    this.textures["restir_buffer_back_tex"] = old_history2;
+    this.textures["restir_aux_back_tex"] = old_history2_aux;
+    
+    // Standard ping-pong swap for current frame
+    let temp_restir = this.textures["restir_buffer_tex"];
+    let temp_aux = this.textures["restir_aux_tex"];
+
+    this.textures["restir_buffer_tex"] = this.textures["restir_buffer_back_tex"];
+    this.textures["restir_aux_tex"] = this.textures["restir_aux_back_tex"];
+
+    this.textures["restir_buffer_back_tex"] = temp_restir;
+    this.textures["restir_aux_back_tex"] = temp_aux;
+  }
+
   clear() {
     let gl = this.gl;
 
@@ -762,7 +830,136 @@ const lowp int light_index[1] = int[](-1);`;
       empty_tex // pixels
     );
 
+    // Clear ReSTIR buffers as well
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_buffer_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_buffer_back_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_aux_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_aux_back_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
+    // Clear enhanced temporal history buffers
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history1_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history1_aux_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history2_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history2_aux_tex"]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, this.canvas.width, this.canvas.height, 0, gl.RGBA, gl.FLOAT, empty_tex);
+
     gl.clear(gl.COLOR_BUFFER_BIT);
+  }
+
+  toggleBufferDisplay() {
+    this.showAllBuffers = !this.showAllBuffers;
+  }
+
+  updateDividerPosition(x, y) {
+    this.debugDividerPos[0] = x;
+    this.debugDividerPos[1] = y;
+    
+    // Update the uniform if debug display is active
+    if (this.showAllBuffers) {
+      let gl = this.gl;
+      gl.useProgram(this.debugDisplay.program);
+      // Note: u_divider uniform removed - divider functionality disabled
+    }
+  }
+
+  resetDebugDivider() {
+    this.debugDividerPos[0] = 0.5;
+    this.debugDividerPos[1] = 0.5;
+    
+    // Update the uniform if debug display is active
+    if (this.showAllBuffers) {
+      let gl = this.gl;
+      gl.useProgram(this.debugDisplay.program);
+      // Note: u_divider uniform removed - divider functionality disabled
+    }
+  }
+
+  // Method to help debug ReSTIR by toggling it on/off
+  toggleReSTIR() {
+    // Force enable ReSTIR for debugging
+    this.defines[4] = "#define USE_RESTIR";
+    this.constants[9] = "const bool use_restir = true;";
+    this.constants[7] = "const bool sample_lights = true;";
+    
+    console.log("%cForced ReSTIR enabled for debugging", 'color: #ff6b35; font-weight: bold');
+    
+    // Update UI to reflect forced state
+    $("#use_restir").prop('checked', true);
+    $("#sample_lights").prop('checked', true);
+    
+    // Mark for recompilation
+    $("#compileBtn").css("background", "linear-gradient(135deg, #dc2626, #ef4444)");
+    
+    console.log("%cNote: You need to recompile the shader and restart rendering to see changes", 'color: #ff6b35; font-weight: bold');
+  }
+
+  // Get ReSTIR debugging info for the UI
+  getReSTIRDebugInfo() {
+    return {
+      isReSTIREnabled: this.animatedScene, // ReSTIR is more active in animated mode
+      temporalFrames: this.temporalFrames,
+      passes: this.passes,
+      animatedMode: this.animatedScene,
+      debugViewActive: this.showAllBuffers
+    };
+  }
+
+  setAnimatedMode(isAnimated) {
+    this.animatedScene = isAnimated;
+    
+    if (isAnimated) {
+      // Apply animated constants for optimized performance
+      this.constants = [...this.animatedConstants];
+      
+      // Enable ReSTIR define for animated scenes
+      this.defines[4] = "#define USE_RESTIR";
+      
+      this.animationStartTime = performance.now();
+      this.lastAnimationUpdate = this.animationStartTime;
+      console.log("%cAnimated mode enabled - using optimized ReSTIR settings", 'color: #00b1ff');
+      console.log("%cReduced bounces and samples for real-time performance", 'color: #00b1ff');
+      console.log("%cReSTIR temporal accumulation active", 'color: #00b1ff');
+      console.log("%cApplied animated constants:", 'color: #00b1ff', this.constants);
+    } else {
+      // Restore default constants for high-quality static rendering
+      this.constants = [
+        "const lowp int MAX_BOUNCES = 12;",
+        "const lowp int MAX_DIFF_BOUNCES = 4;",
+        "const lowp int MAX_SPEC_BOUNCES = 4;",
+        "const lowp int MAX_TRANS_BOUNCES = 12;",
+        "const lowp int MAX_SCATTERING_EVENTS = 12;",
+        "const mediump int MARCHING_STEPS = 128;",
+        "const lowp float FUDGE_FACTOR = 0.9;",
+        "const bool sample_lights = true;",
+        "const bool use_mis = false;",
+        "const bool use_restir = false;",
+        "const lowp int LIGHT_PATH_LENGTH = 2;",
+        "const lowp int RESTIR_SAMPLES = 16;",
+        "const lowp int RENDER_MODE = 0;"
+      ];
+      
+      // Disable ReSTIR for static scenes by default
+      this.defines[4] = "//#define USE_RESTIR";
+      
+      console.log("%cStatic mode enabled - using high-quality settings", 'color: #00b1ff');
+      console.log("%cProgressive accumulation for noise reduction", 'color: #00b1ff');
+    }
+    
+    // Reset the accumulation when switching modes
+    this.clear();
   }
 
   // RENDER FUNCTION
@@ -770,33 +967,118 @@ const lowp int light_index[1] = int[](-1);`;
     let time = performance.now() - this.loadTime;
     let gl = this.gl;
 
+    // Handle animation for animated scenes
+    if (this.animatedScene) {
+      let currentTime = performance.now();
+
+      // For real-time rendering, we don't accumulate color but we still need
+      // frame counting for ReSTIR temporal reuse
+      if (currentTime - this.lastAnimationUpdate > 16) { // ~60 FPS
+        this.lastAnimationUpdate = currentTime;
+      }
+
+      // Keep passes reasonable for ReSTIR temporal history
+      // Use fewer passes for animated scenes to maintain performance
+      if (this.passes > this.temporalFrames * 2) {
+        this.passes = this.temporalFrames; // Reset based on temporal accumulation setting
+      }
+    }
+
     //------------------ CUSTOM SHADER (RAYTRACER) ----------------------
     gl.useProgram(this.frontTarget.program);
 
     gl.uniform1ui(this.frontTarget.frameID, ++this.passes);
     gl.uniform1f(this.frontTarget.timeID, time);
 
+
+    // Set temporal accumulation frames for animated scenes
+    gl.uniform1i(this.frontTarget.temporalFramesID, this.temporalFrames);
+
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.textures["back_target_tex"]);
 
-    // Render custom shader to front buffer
+    // Bind ReSTIR buffers (read from back buffers to avoid feedback loop)
+    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_buffer"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_buffer_back_tex"] || this.textures["restir_buffer_tex"]);
+
+    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_aux"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_aux_back_tex"] || this.textures["restir_aux_tex"]);
+
+    // Bind enhanced temporal history buffers for multi-frame ReSTIR
+    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history1"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history1_tex"]);
+
+    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history1_aux"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history1_aux_tex"]);
+
+    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history2"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history2_tex"]);
+
+    gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history2_aux"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history2_aux_tex"]);
+
+    // Render custom shader to front buffer (MRT: color + ReSTIR + ReSTIR aux)
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.frontTarget.framebuffer);
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.textures["front_target_tex"], 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, this.textures["restir_buffer_tex"], 0);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT2, gl.TEXTURE_2D, this.textures["restir_aux_tex"], 0);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     //------------------ SCREEN SHADER (DISPLAY) ------------------------
 
-    gl.useProgram(this.display.program);
+    if (this.showAllBuffers) {
+      gl.useProgram(this.debugDisplay.program);
 
-    gl.uniform1f(this.display.contributionID, 1.0 / this.passes);
+      let contribution = this.animatedScene ? 1.0 : 1.0 / this.passes;
+      gl.uniform1f(this.debugDisplay.contributionID, contribution);
 
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.textures["front_target_tex"]);
+      gl.uniform1ui(this.debugDisplay.frameID, this.passes);
+
+      gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["backbuffer"]);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures["front_target_tex"]);
+
+      gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_buffer"]);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_buffer_tex"]);
+
+      gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_aux"]);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_aux_tex"]);
+
+      // Bind enhanced temporal history buffers for debug display
+      gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history1"]);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history1_tex"]);
+
+      gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history1_aux"]);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history1_aux_tex"]);
+
+      gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history2"]);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history2_tex"]);
+
+      gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history2_aux"]);
+      gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_history2_aux_tex"]);
+
+    } else {
+      gl.useProgram(this.display.program);
+
+      if (this.animatedScene) {
+        gl.uniform1f(this.display.contributionID, 1.0);
+
+        // Bind the temporally accumulated result (front target)
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.textures["front_target_tex"]);
+      } else {
+        gl.uniform1f(this.display.contributionID, 1.0 / this.passes);
+
+        // Bind the progressively accumulated result (front target)
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.textures["front_target_tex"]);
+      }
+    }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    // texture ping pong
+    this.swapReSTIRBuffers();
+
     let tmp = this.textures["back_target_tex"];
     this.textures["back_target_tex"] = this.textures["front_target_tex"];
     this.textures["front_target_tex"] = tmp;

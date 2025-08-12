@@ -110,6 +110,7 @@ body::before {
 
 #glslViewport {
   display: inline-block;
+  position: relative;
   /* Dark checkerboard pattern */
   background-color: #21262d;
   background-image: 
@@ -121,6 +122,48 @@ body::before {
   padding: 10px;
   border: 1px solid rgba(48, 54, 61, 0.5);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+
+.debug-labels {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  pointer-events: none;
+  z-index: 10;
+  display: none;
+}
+
+.debug-labels.active {
+  display: block;
+}
+
+.debug-label {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.debug-label.main {
+  background: rgba(200, 50, 50, 0.9);
+}
+
+.debug-label.restir {
+  background: rgba(50, 200, 50, 0.9);
+}
+
+.debug-label.aux {
+  background: rgba(50, 50, 200, 0.9);
+}
+
+.debug-label.effectiveness {
+  background: rgba(200, 200, 50, 0.9);
 }
 
 #settings {
@@ -352,6 +395,22 @@ body::before {
 #settings #infoBtn:hover {
   background: linear-gradient(135deg, #047857, #059669);
   box-shadow: 0 6px 20px rgba(5, 150, 105, 0.4);
+}
+
+#settings #debugBtn {
+  background: linear-gradient(135deg, #dc2626, #ef4444);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+  width: calc(48% - 4px);
+}
+
+#settings #debugBtn:hover {
+  background: linear-gradient(135deg, #b91c1c, #dc2626);
+  box-shadow: 0 6px 20px rgba(220, 38, 38, 0.4);
+}
+
+#settings #debugBtn.active {
+  background: linear-gradient(135deg, #ff6b35, #ff8c42);
+  box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
 }
 
 /* Button container to better organize the layout */

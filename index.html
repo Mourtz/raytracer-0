@@ -1,7 +1,7 @@
 <html>
 
 <head>
-  <title>WebGL2 Raytracer</title>
+  <title>WebGL2 Raytracer - Enhanced ReSTIR Temporal Reuse</title>
   <!--Let browser know website is optimized for mobile-->
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!--  CSS  -->
@@ -53,7 +53,11 @@
 
         <div>
           <input type="checkbox" id="use_restir" onchange="updateParams(this);" />
-          <label for="use_restir">ReSTIR</label>
+          <label for="use_restir">Enhanced ReSTIR (Multi-Frame Temporal)</label>
+        </div>
+
+        <div id="animation_status" style="display: none; color: #ff6b35; font-weight: bold; margin-top: 10px;">
+          🎬 ANIMATED SCENE - Real-time ReSTIR Demo
         </div>
 
         <!--
@@ -87,16 +91,23 @@
           <option value="2">Mandelbulb</option>
           <option value="3">MengerSponge</option>
           <option value="4">MIS Demo</option>
-          <option value="5">ReSTIR Demo (9 lights)</option>
-          <option value="6">ReSTIR Heavy (25+ lights)</option>
+          <option value="5">Enhanced ReSTIR Demo (9 lights)</option>
+          <option value="6">ReSTIR Stress Test (25+ lights)</option>
+          <option value="7">Animated ReSTIR Showcase (Real-time)</option>
         </select>
-        <label>Scene Select</label>
+        <label>Scene Select - Try Enhanced ReSTIR scenes!</label>
       </div>
 
       <!-- Passes -->
       <p class="range-field">
         <label>Passes</label>
         <input type="range" id="passes" min="1" max="1e4" value="64" onchange="updateParams(this);" />
+      </p>
+
+      <!-- Temporal Accumulation for Animated Scenes -->
+      <p class="range-field" id="temporal_accumulation_slider" style="display: none;">
+        <label>Temporal Accumulation (frames)</label>
+        <input type="range" id="temporal_frames" min="1" max="16" value="5" onchange="updateParams(this);" />
       </p>
 
       <p class="range-field">
@@ -141,6 +152,7 @@
       </div>
 
       <div class="button-row">
+        <a class="waves-effect waves-light btn" id="debugBtn" onclick="toggleBufferDisplay();">Show All Buffers</a>
         <a class="waves-effect waves-light btn modal-trigger" id="infoBtn" href="#modal1">Controls</a>
       </div>
     </div>
@@ -165,10 +177,19 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
   <div id="modal1" class="modal">
     <div class="modal-content">
       <p>
-        <b>Controls:</b><br> W/A/S/D/Q/E to modify camera's origin,<br> UP/LEFT/DOWN/RIGHT arrow to modify camera's
-        concentration point position,<br> 1/! to increase/decrease the field of view,<br> 2/@ to increase/decrease the
-        aperture size,<br> 3/# to increase/decrease the focal length,<br> SPACE to reset camera,<br> R to reset view
-        direction,<br> Esc to stop
+        <b>Controls:</b><br> 
+        W/A/S/D/Q/E to modify camera's origin,<br> 
+        UP/LEFT/DOWN/RIGHT arrow to modify camera's concentration point position,<br> 
+        1/! to increase/decrease the field of view,<br> 
+        2/@ to increase/decrease the aperture size,<br> 
+        3/# to increase/decrease the focal length,<br> 
+        <b>D</b> to toggle enhanced debug display (3x2 grid with temporal history),<br>
+        <b>V</b> to show detailed ReSTIR debug information,<br>
+        <b>C</b> to center debug divider (when in debug mode),<br>
+        <b>Mouse drag</b> to adjust debug view in grid mode,<br>
+        SPACE to reset camera,<br> 
+        R to reset view direction,<br> 
+        Esc to stop
       </p>
     </div>
     <div class="modal-footer">
@@ -176,8 +197,6 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     </div>
   </div>
 
-  <!--      nWGL      -->
-  <script src="external/nWGL/nWGL.js"></script>
   <!--	   jQuery 2.2.4      -->
   <script src="external/js/jquery.min.js"></script>
   <!--	Materializecss  -->
@@ -186,7 +205,7 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
   <script src="external/js/stats.min.js"></script>
   <!--    Custom GL Tools    -->
   <script src="tools.js"></script>
-  <!--      Vector2,3,4      -->
+  <!--      Vector3      -->
   <script src="vector.js"></script>
   <!--         index         -->
   <script src="index.js"></script>
@@ -212,6 +231,11 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
       "name": 'display_shader',
       "type": 'frag',
       "filepath": "shaders/tonemapper.glsl"
+    },
+    {
+      "name": 'debug_display_shader',
+      "type": 'frag',
+      "filepath": "shaders/debug_display.glsl"
     }
     ];
 
@@ -246,6 +270,20 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     document.body.appendChild(stats.dom);
     document.getElementById("glslViewport").appendChild(sandbox.canvas);
 
+    // Add enhanced debug labels overlay for 3x2 grid
+    const debugLabels = document.createElement('div');
+    debugLabels.className = 'debug-labels';
+    debugLabels.id = 'debugLabels';
+    debugLabels.innerHTML = `
+      <div class="debug-label main" id="labelMain">MAIN RENDER</div>
+      <div class="debug-label effectiveness" id="labelEffectiveness">ReSTIR EFFECTIVENESS</div>
+      <div class="debug-label temporal" id="labelTemporal">TEMPORAL ANALYSIS</div>
+      <div class="debug-label samples" id="labelSamples">SAMPLE COUNT (M)</div>
+      <div class="debug-label age" id="labelAge">AGE & LIGHT INDEX</div>
+      <div class="debug-label contribution" id="labelContribution">LIGHT CONTRIBUTIONS</div>
+    `;
+    document.getElementById("glslViewport").appendChild(debugLabels);
+
     $("#glslViewport canvas").css("width", w_size);
     $("#glslViewport canvas").css("height", w_size);
 
@@ -254,6 +292,46 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
     document.addEventListener('mousedown', function (evt) {
       lastDownTarget = evt.target;
 
+    }, false);
+
+    // Debug divider interaction
+    let isDraggingDivider = false;
+    
+    document.addEventListener('mousedown', function (evt) {
+      if (evt.target === sandbox.canvas && sandbox.showAllBuffers) {
+        const rect = sandbox.canvas.getBoundingClientRect();
+        const x = (evt.clientX - rect.left) / rect.width;
+        const y = 1.0 - (evt.clientY - rect.top) / rect.height; // Flip Y for OpenGL coordinates
+        
+        // Check if clicking near the divider center
+        const centerDist = Math.sqrt(
+          Math.pow(x - sandbox.debugDividerPos[0], 2) + 
+          Math.pow(y - sandbox.debugDividerPos[1], 2)
+        );
+        
+        if (centerDist < 0.05) { // Within 5% of screen size
+          isDraggingDivider = true;
+          evt.preventDefault();
+        }
+      }
+    }, false);
+    
+    document.addEventListener('mousemove', function (evt) {
+      if (isDraggingDivider && sandbox.showAllBuffers) {
+        const rect = sandbox.canvas.getBoundingClientRect();
+        const x = Math.max(0.1, Math.min(0.9, (evt.clientX - rect.left) / rect.width));
+        const y = Math.max(0.1, Math.min(0.9, 1.0 - (evt.clientY - rect.top) / rect.height));
+        
+        sandbox.updateDividerPosition(x, y);
+        sandbox.render();
+        updateDebugLabels();
+        
+        evt.preventDefault();
+      }
+    }, false);
+    
+    document.addEventListener('mouseup', function (evt) {
+      isDraggingDivider = false;
     }, false);
 
     const cam_step = 0.1;
@@ -355,6 +433,21 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
         else if (evt.key === "@") sandbox.camera.aperture = Math.max(0.0, sandbox.camera.aperture - cam_aperture_step);
         else if (evt.key === "3") sandbox.camera.focalLength += 0.1;
         else if (evt.key === "#") sandbox.camera.focalLength = Math.max(0.1, sandbox.camera.focalLength - 0.1);
+        else if (evt.key === "d" || evt.key === "D") { // D - toggle enhanced debug display
+          toggleBufferDisplay();
+          refresh = false; // Don't refresh camera for this action
+        }
+        else if (evt.key === "v" || evt.key === "V") { // V - ReSTIR debug info
+          sandbox.toggleReSTIR();
+          refresh = false; // Don't refresh camera for this action
+        }
+        else if (evt.key === "c" || evt.key === "C") { // C - center debug divider
+          if (sandbox.showAllBuffers) {
+            sandbox.resetDebugDivider();
+            updateDebugLabels();
+            refresh = false; // Don't refresh camera for this action
+          }
+        }
         else refresh = false;
 
         if (refresh) {
@@ -420,6 +513,8 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
           } else if (el.id === "max_scatter") {
             sandbox.constants[4] = "const lowp int MAX_SCATTERING_EVENTS = " + el.value + ";";
             markNeedsRecompilation();
+          } else if (el.id === "temporal_frames") {
+            sandbox.temporalFrames = parseInt(el.value);
           } else {
             return console.error();
           }
@@ -463,7 +558,16 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)</textarea>
           markNeedsRecompilation();
         } else if (el.id == "use_restir") {
           sandbox.constants[9] = "const bool use_restir = " + el.checked + ";";
+          sandbox.defines[4] = el.checked ? "#define USE_RESTIR" : "//#define USE_RESTIR";
           console.log("Updated use_restir:", sandbox.constants[9]);
+          console.log("Updated USE_RESTIR:", sandbox.defines[4]);
+          
+          // Show/hide enhanced ReSTIR info panel
+          const restirInfo = document.getElementById("restir_info");
+          if (restirInfo) {
+            restirInfo.style.display = el.checked ? "block" : "none";
+          }
+          
           markNeedsRecompilation();
         } else if (el.id == "u_biDirectional") {
           sandbox.defines[3] = el.checked ? "#define USE_BIDIRECTIONAL" : "//#define USE_BIDIRECTIONAL";
@@ -614,6 +718,10 @@ const lowp int light_index[` + light_indices.length + `] = int[](
 
     function size_select(val) {
       sandbox.resize(val);
+      // Update debug labels after resize
+      if (sandbox.showAllBuffers) {
+        setTimeout(updateDebugLabels, 100); // Small delay to ensure resize is complete
+      }
     }
 
     function scene_select(val) {
@@ -627,6 +735,11 @@ MAT_WHITE, SDF, vec3(0.0, -1.6, -0.2), vec4(1.5,0.1,1.5,0.0)`;
         enabled[0] = true;
         enabled[1] = false;
         enabled[2] = true;
+
+        sandbox.setAnimatedMode(false);
+        $("#animation_status").hide();
+        $("#temporal_accumulation_slider").hide();
+        updateUISliders(false);
 
         updateParams({
           type: 'textarea',
@@ -756,6 +869,11 @@ MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.3, 0.05, 0.3, 0.0)`;
         enabled[1] = false;
         enabled[2] = true;
 
+        // Enable ReSTIR for multi-light scene
+        $("#use_restir").prop('checked', true);
+        sandbox.defines[4] = "#define USE_RESTIR";
+        sandbox.constants[9] = "const bool use_restir = true;";
+
         updateParams({
           type: 'textarea',
           id: 'scene',
@@ -823,6 +941,11 @@ MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.4, 0.05, 0.4, 0.0)`;
         enabled[1] = false;
         enabled[2] = true;
 
+        // Enable ReSTIR for heavy multi-light scene
+        $("#use_restir").prop('checked', true);
+        sandbox.defines[4] = "#define USE_RESTIR";
+        sandbox.constants[9] = "const bool use_restir = true;";
+
         updateParams({
           type: 'textarea',
           id: 'scene',
@@ -834,6 +957,77 @@ MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.4, 0.05, 0.4, 0.0)`;
 
         sandbox.camera.origin = new Vector3(0.0, 0.0, 2.5);
         sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+      } else if (val == 7) { // Animated ReSTIR Scene - Real-time optimized
+        scene_el.value = `MAT_WHITE, PLANE, vec3(0.0, 1.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, -1.0, 0.0), vec4(2.0)
+MAT_GREEN, PLANE, vec3(1.0, 0.0, 0.0), vec4(2.0)
+MAT_RED, PLANE, vec3(-1.0, 0.0, 0.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, 1.0), vec4(2.0)
+MAT_WHITE, PLANE, vec3(0.0, 0.0, -1.0), vec4(2.0)
+MAT_LIGHT_4, SPHERE, vec3(0.0, 1.7, 0.0), vec4(0.04)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.8, 1.5, 0.8), vec4(0.03)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-0.8, 1.5, 0.8), vec4(0.03)
+MAT_LIGHT_4, SPHERE, vec3(0.8, 1.5, -0.8), vec4(0.03)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(-0.8, 1.5, -0.8), vec4(0.03)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(0.0, 1.3, 1.2), vec4(0.025)
+MAT_LIGHT_4, SPHERE, vec3(1.2, 1.3, 0.0), vec4(0.025)
+MAT_LIGHT_CANDLE_4, SPHERE, vec3(0.0, 1.3, -1.2), vec4(0.025)
+MAT_LIGHT_HALOGEN_4, SPHERE, vec3(-1.2, 1.3, 0.0), vec4(0.025)
+MAT_REFR_CLEAR, SPHERE, vec3(-0.4, -0.3, 0.4), vec4(0.35)
+MAT_MIRROR, SPHERE, vec3(0.4, -0.3, -0.4), vec4(0.35)
+MAT_METAL, SDF, vec3(0.0, -0.2, 0.0), vec4(0.3, 0.05, 0.3, 0.0)`;
+
+        enabled[0] = false;
+        enabled[1] = false;
+        enabled[2] = true;
+
+        // Enable animated mode with optimized settings
+        sandbox.setAnimatedMode(true);
+
+        // Update UI to reflect ReSTIR being enabled for animated scenes
+        $("#use_restir").prop('checked', true);
+
+        updateParams({
+          type: 'textarea',
+          id: 'scene',
+          dn_highlight: false,
+          text: $("#scene").val()
+        });
+        $("#sdf0").val(1); // RoundBox SDF in center
+        $('select').material_select();
+
+        // Update UI sliders to reflect real-time settings
+        updateUISliders(true);
+
+        // Show animation status and performance info
+        $("#animation_status").show();
+        $("#temporal_accumulation_slider").show();
+
+        // Update performance info
+        $("#animation_status").html("🎬 ANIMATED SCENE - Real-time ReSTIR Demo<br><small>Optimized: 6 bounces, 2 diffuse, 64 marching steps</small>");
+
+        sandbox.camera.origin = new Vector3(0.0, 0.0, 1.99);
+        sandbox.camera.lookat = new Vector3(0.0, 0.0, -1.0);
+
+        // Enable animation for this scene
+        sandbox.animatedScene = true;
+        sandbox.animationStartTime = performance.now();
+
+        // Show animation status and temporal accumulation slider
+        $("#animation_status").show();
+        $("#temporal_accumulation_slider").show();
+
+        markNeedsRecompilation();
+      }
+
+      // Reset animation for non-animated scenes
+      if (val !== 7) {
+        sandbox.setAnimatedMode(false);
+        // Update UI to reflect ReSTIR being disabled for static scenes
+        $("#use_restir").prop('checked', false);
+        // Hide animation status and temporal accumulation slider
+        $("#animation_status").hide();
+        $("#temporal_accumulation_slider").hide();
       }
 
       // Cubemap
@@ -934,7 +1128,7 @@ MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.4, 0.05, 0.4, 0.0)`;
       // tile rendering
       if (sandbox.tile_rendering && sandbox.tile_size != 0 && sandbox.passes >= sandbox.max_passes) sandbox.updateTile();
 
-      if (is_live) {
+      if (is_live || sandbox.animatedScene) {
         window.requestAnimFrame(RenderLoop)
       } else {
         if (rendering && sandbox.passes < sandbox.max_passes) {
@@ -947,6 +1141,89 @@ MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.4, 0.05, 0.4, 0.0)`;
           $("#ff .progress .determinate").css("width", 0 + '%');
           document.getElementById("renderBtn").innerHTML = "RENDER";
         }
+      }
+    }
+
+    function updateDebugLabels() {
+      if (!sandbox.showAllBuffers) return;
+      
+      const canvas = sandbox.canvas;
+      const rect = canvas.getBoundingClientRect();
+      const dividerX = sandbox.debugDividerPos[0];
+      const dividerY = sandbox.debugDividerPos[1];
+      
+      // Calculate positions for each label (3x2 grid)
+      const labelMain = document.getElementById("labelMain");
+      const labelEffectiveness = document.getElementById("labelEffectiveness");
+      const labelTemporal = document.getElementById("labelTemporal");
+      const labelSamples = document.getElementById("labelSamples");
+      const labelAge = document.getElementById("labelAge");
+      const labelContribution = document.getElementById("labelContribution");
+      
+      // Top row (3 columns)
+      if (labelMain) {
+        labelMain.style.left = (33.33 * 0.5) + "%";
+        labelMain.style.top = "8%";
+        labelMain.style.transform = "translate(-50%, 0)";
+      }
+      
+      if (labelEffectiveness) {
+        labelEffectiveness.style.left = (33.33 + 33.33 * 0.5) + "%";
+        labelEffectiveness.style.top = "8%";
+        labelEffectiveness.style.transform = "translate(-50%, 0)";
+      }
+      
+      if (labelTemporal) {
+        labelTemporal.style.left = (66.66 + 33.33 * 0.5) + "%";
+        labelTemporal.style.top = "8%";
+        labelTemporal.style.transform = "translate(-50%, 0)";
+      }
+      
+      // Bottom row (3 columns)
+      if (labelSamples) {
+        labelSamples.style.left = (33.33 * 0.5) + "%";
+        labelSamples.style.top = "58%";
+        labelSamples.style.transform = "translate(-50%, 0)";
+      }
+      
+      if (labelAge) {
+        labelAge.style.left = (33.33 + 33.33 * 0.5) + "%";
+        labelAge.style.top = "58%";
+        labelAge.style.transform = "translate(-50%, 0)";
+      }
+      
+      if (labelContribution) {
+        labelContribution.style.left = (66.66 + 33.33 * 0.5) + "%";
+        labelContribution.style.top = "58%";
+        labelContribution.style.transform = "translate(-50%, 0)";
+      }
+    }
+
+    function toggleBufferDisplay() {
+      sandbox.toggleBufferDisplay();
+      
+      // Update button text and styling
+      const btn = document.getElementById("debugBtn");
+      btn.innerHTML = sandbox.showAllBuffers ? "Show Main Buffer" : "Show All Buffers";
+      
+      // Show/hide debug labels
+      const debugLabels = document.getElementById("debugLabels");
+      if (sandbox.showAllBuffers) {
+        btn.classList.add("active");
+        debugLabels.classList.add("active");
+        updateDebugLabels();
+        console.log("%cReSTIR Debug view enabled - analyzing ReSTIR performance", 'color: #ff6b35; font-weight: bold');
+        console.log("%c• Top-left: Final rendered image", 'color: #ff6b35');
+        console.log("%c• Top-center: ReSTIR effectiveness (green=good, red=poor)", 'color: #ff6b35');
+        console.log("%c• Top-right: Temporal reuse analysis (green=improved, red=degraded)", 'color: #ff6b35');
+        console.log("%c• Bottom-left: Sample count visualization (M values)", 'color: #ff6b35');
+        console.log("%c• Bottom-center: Reservoir age and light index mapping", 'color: #ff6b35');
+        console.log("%c• Bottom-right: Direct light contribution analysis", 'color: #ff6b35');
+        console.log("%c• This enhanced view now properly uses u_restir_history1_aux!", 'color: #00ff00; font-weight: bold');
+      } else {
+        btn.classList.remove("active");
+        debugLabels.classList.remove("active");
+        console.log("%cDebug view disabled - showing main buffer only", 'color: #27ff00');
       }
     }
 
@@ -965,6 +1242,31 @@ MAT_WHITE, SDF, vec3(0.0, 0.0, 0.0), vec4(0.4, 0.05, 0.4, 0.0)`;
       console.log("%cOutput resolution: " + sandbox.canvas.width.toString() + "x" + sandbox.canvas.height.toString() + "\n", 'color: #5800b1');
       console.log("%cPasses: " + sandbox.max_passes, 'color: #5800b1');
       if (rendering) !(sandbox.passes = 0) && (sandbox.loadTime = performance.now()) && RenderLoop();
+    }
+
+    // Update UI sliders to reflect current rendering mode
+    function updateUISliders(isAnimated) {
+      console.log("%cUpdating UI sliders for " + (isAnimated ? "animated" : "static") + " scene", 'color: #9b59b6');
+
+      if (isAnimated) {
+        // Set animated scene values
+        $("#max_bounces").val(6);
+        $("#max_diff").val(2);
+        $("#max_spec").val(2);
+        $("#max_trans").val(4);
+        $("#max_scatter").val(4);
+        $("#m_steps").val(64);
+        console.log("%cSet sliders to animated values: 6 bounces, 2 diffuse, 64 marching steps", 'color: #ff6b35');
+      } else {
+        // Restore static scene values
+        $("#max_bounces").val(12);
+        $("#max_diff").val(4);
+        $("#max_spec").val(4);
+        $("#max_trans").val(12);
+        $("#max_scatter").val(12);
+        $("#m_steps").val(128);
+        console.log("%cRestored sliders to static values: 12 bounces, 4 diffuse, 128 marching steps", 'color: #27ff00');
+      }
     }
 
     $(document).ready(function () {
