@@ -1,79 +1,4 @@
-let Vector2 = /** @class */ (function () {
-  function Vector2(x, y) {
-    if (x === void 0) {
-      x = 0.0;
-    }
-    if (y === void 0) {
-      y = 0.0;
-    }
-    this.x = x;
-    this.y = y;
-  }
-
-  Vector2.prototype.get = function (axis) {
-    switch (axis) {
-      case 1:
-        return this.x;
-      case 2:
-        return this.y;
-    }
-  };
-
-  Object.defineProperty(Vector2.prototype, "glData", {
-    get: function () {
-      return new Float32Array([this.x, this.y]);
-    },
-    enumerable: true,
-    configurable: true
-  });
-
-  return Vector2;
-}());
-
-let Vector4 = /** @class */ (function () {
-  function Vector4(x, y, z, w) {
-    if (x === void 0) {
-      x = 0.0;
-    }
-    if (y === void 0) {
-      y = 0.0;
-    }
-    if (z === void 0) {
-      z = 0.0;
-    }
-    if (w === void 0) {
-      w = 0.0;
-    }
-    this.x = x;
-    this.y = y;
-    this.z = z;
-    this.w = w;
-  }
-
-  Vector4.prototype.get = function (axis) {
-    switch (axis) {
-      case 1:
-        return this.x;
-      case 2:
-        return this.y;
-      case 3:
-        return this.z;
-      case 4:
-        return this.w;
-    }
-  };
-
-  Object.defineProperty(Vector4.prototype, "glData", {
-    get: function () {
-      return new Float32Array([this.x, this.y, this.z, this.w]);
-    },
-    enumerable: true,
-    configurable: true
-  });
-
-  return Vector4;
-}());
-
+// Vector3 class - the only vector class used in this project
 let Vector3 = (function () {
   function Vector3(x, y, z) {
     if (x === void 0) {
@@ -168,6 +93,3 @@ let Vector3 = (function () {
 
   return Vector3;
 }());
-
-//let tes = new Vector3(1,2,3);
-//let tes1 = new Vector3(4,5,6);

@@ -13,6 +13,8 @@ precision mediump sampler2DArray;
 precision mediump usampler2D;
 
 layout(location = 0) out highp vec4 FragColor;
+layout(location = 1) out highp vec4 ReSTIRData;
+layout(location = 2) out highp vec4 ReSTIRAux;
 
 //------------------------------- UNIFORMS --------------------------------------
 
@@ -22,14 +24,20 @@ uniform vec2 u_resolution;
 uniform float u_time;
 // current frame
 uniform uint u_frame;
-// sdf meshes sample on grid
-/*uniform sampler3D u_sdf0;*/
-// backbuffer, tex0, tex1, tex2, tex3, random tex, keyboard LUT
-uniform sampler2D u_bufferA, u_tex0, u_tex1, u_tex2, u_tex3, u_rnd_tex/*, u_keyboard*/;
+// backbuffer, tex0, tex1, tex2, tex3, random tex
+uniform sampler2D u_bufferA, u_tex0, u_tex1, u_tex2, u_tex3, u_rnd_tex;
+uniform sampler2D u_restir_buffer;
+uniform sampler2D u_restir_aux;
+uniform sampler2D u_restir_history1;
+uniform sampler2D u_restir_history1_aux;
+uniform sampler2D u_restir_history2;
+uniform sampler2D u_restir_history2_aux;
 // enviroment cubemap
 uniform samplerCube u_cubemap;
 // camera attributes
 uniform vec3 u_camPos, u_camLookAt, u_camParams;
+// temporal accumulation frames for animated scenes
+uniform int u_temporalFrames;
 
 //------------------------------- CONSTANTS -------------------------------------
 
@@ -48,6 +56,13 @@ const lowp float ior_coat         =   1.4;
 const lowp float ior_glass        =   1.53;
 const lowp float ior_sapphire     =   1.77;
 const mediump float ior_diamond   =   2.417;
+
+// Participating media parameters
+#ifdef USE_VOLUMETRICS
+const float VOL_SIGMA_T = 0.15;  // total extinction — mean free path ~6.7 units; subtle fog, dramatic shafts
+const float VOL_SIGMA_S = 0.13;  // scattering coefficient; albedo ≈ 0.87
+const float VOL_G       = 0.5;   // stronger forward lobe = brighter, more defined god ray shafts
+#endif
 
 // PI & E consts
 const float PI                =   3.14159265;
@@ -78,7 +93,6 @@ const struct AABB{
   vec3 b1;	       //bottom-left vertex
   vec3 tr;	       //top-right vertex
 };
-//uniform u_sdf0_aabb{ AABB aabb; } sdf0_aabb;
 
 //-------------------------------
 
@@ -162,6 +176,8 @@ const Material MAT_REFR_TEST = Material(vec3(1.0), vec3(0.0), ior_glass, REFR_FR
 const Material MAT_LIGHT_4 = Material(vec3(1.0), vec3(4.0), 0.0, LIGHT, NULL_TEX, bvec4(false));
 const Material MAT_LIGHT_CANDLE_4 = Material(vec3(1.0, 0.57647058823, 0.16078431372), vec3(4.0), 0.0, LIGHT, NULL_TEX, bvec4(false));
 const Material MAT_LIGHT_HALOGEN_4 = Material(vec3(1.0, 0.94509803921, 0.87843137254), vec3(4.0), 0.0, LIGHT, NULL_TEX, bvec4(false));
+// Bright demo light — high emission for dramatic god rays through participating media
+const Material MAT_LIGHT_DEMO = Material(vec3(1.0), vec3(10.0), 0.0, LIGHT, NULL_TEX, bvec4(false));
 
 //----- EMISSIVE TEXTURE MATERIALS -----
 const Material MAT_LIGHT_4_TEX = Material(vec3(1.0), vec3(1.0), 0.0, LIGHT, TEX_1, bvec4(true,false,false,false));
@@ -200,6 +216,13 @@ const Material MAT_COAT_WAX    = Material(vec3(0.9333, 0.6666, 0.6), vec3(0.005)
 //----- TEST -----
 const Material MAT_TEST        = Material(vec3(1.0), vec3(0.0), 0.0, DIFF, TEX_1, bvec4(true,false,false,false));
 
+//----- SPECTRAL GLASS -----
+// Negative nt signals a spectral material: |nt| = Cauchy A coeff for SF11 dense flint glass.
+// Produces rainbow dispersion/caustics when USE_SPECTRAL is defined.
+const Material MAT_SPECTRAL_FLINT   = Material(vec3(1.0), vec3(0.0), -1.7167, REFR_FRESNEL, NULL_TEX, bvec4(false));
+// Diamond Cauchy approximation: A=2.3991 (extreme dispersion, 2× stronger than glass)
+const Material MAT_SPECTRAL_DIAMOND = Material(vec3(1.0), vec3(0.0), -2.3991, REFR_FRESNEL, NULL_TEX, bvec4(false));
+
 //===============================================================================
 //---------------------------------- MESH ---------------------------------------
 //===============================================================================
@@ -234,10 +257,52 @@ const LightPathNode NULL_LightPathNode = LightPathNode(vec3(0.0), vec3(0.0), vec
 //LightPathNode lpNodes[light_index.length()*LIGHT_PATH_LENGTH];
 //const bool h_lights = light_index.length() >= 0;
 
+//------------------------------- ANIMATION -------------------------------------
+
+// Get animated position for lights and objects
+vec3 getAnimatedPosition(const vec3 basePos, const int meshIndex, const float time) {
+    if (RENDER_MODE != 1) return basePos;
+    
+    vec3 animatedPos = basePos;
+    float t = time * 0.001; // Convert to seconds
+    
+    if (meshIndex >= 6 && meshIndex <= 14) {
+        float radius = 0.6;
+        float speed = 1.0 + float(meshIndex - 6) * 0.2;
+        float phase = float(meshIndex - 6) * 0.7;
+
+        animatedPos.x = basePos.x + cos(t * speed + phase) * radius * 0.3;
+        animatedPos.z = basePos.z + sin(t * speed + phase) * radius * 0.3;
+        animatedPos.y = basePos.y + sin(t * speed * 2.0 + phase) * 0.1;
+    }
+    
+    bool hasSDF = (NUM_SDFS > 0);
+    if (meshIndex >= NUM_MESHES && hasSDF) { // SDF objects
+        float rotSpeed = 0.5;
+        float angle = t * rotSpeed;
+        float cosA = cos(angle);
+        float sinA = sin(angle);
+        
+        vec3 rotatedPos = vec3(
+            animatedPos.x * cosA - animatedPos.z * sinA,
+            animatedPos.y,
+            animatedPos.x * sinA + animatedPos.z * cosA
+        );
+        
+        rotatedPos.y += sin(t * 1.5) * 0.05;
+        
+        return rotatedPos;
+    }
+    
+    return animatedPos;
+}
+
 //=========================== RNG ===============================
 
 float hash(float seed){
-    return fract(sin(seed) * 43758.5453);
+    uint n = floatBitsToUint(seed) * 747796405u + 2891336453u;
+    n = ((n >> ((n >> 28u) + 4u)) ^ n) * 277803737u;
+    return float((n >> 22u) ^ n) * (1.0 / float(0xffffffffu));
 }
 
 vec2 hash2(vec2 seed){
@@ -251,6 +316,47 @@ vec3 hash3(vec3 seed){
     seed += dot(seed, seed.yxz + 19.19);
     return fract((seed.xxy + seed.yxx) * seed.zyx);
 }
+
+//==================== SPECTRAL FUNCTIONS =======================
+
+#ifdef USE_SPECTRAL
+// CIE 1931 2° XYZ color matching functions — Wyman et al. 2013 analytic fit
+float xyzCMF_x(float l) {
+    float t1 = (l - 442.0) * (l < 442.0 ? 0.0624 : 0.0374);
+    float t2 = (l - 599.8) * (l < 599.8 ? 0.0264 : 0.0323);
+    float t3 = (l - 501.1) * (l < 501.1 ? 0.0490 : 0.0382);
+    return 0.362*exp(-0.5*t1*t1) + 1.056*exp(-0.5*t2*t2) - 0.065*exp(-0.5*t3*t3);
+}
+float xyzCMF_y(float l) {
+    float t1 = (l - 568.8) * (l < 568.8 ? 0.0213 : 0.0247);
+    float t2 = (l - 530.9) * (l < 530.9 ? 0.0613 : 0.0322);
+    return 0.821*exp(-0.5*t1*t1) + 0.286*exp(-0.5*t2*t2);
+}
+float xyzCMF_z(float l) {
+    float t1 = (l - 437.0) * (l < 437.0 ? 0.0845 : 0.0278);
+    float t2 = (l - 459.0) * (l < 459.0 ? 0.0385 : 0.0725);
+    return 1.217*exp(-0.5*t1*t1) + 0.681*exp(-0.5*t2*t2);
+}
+
+// XYZ → linear sRGB (D65 whitepoint)
+vec3 xyzToLinearSRGB(vec3 xyz) {
+    return vec3(
+         3.2404542*xyz.x - 1.5371385*xyz.y - 0.4985314*xyz.z,
+        -0.9692660*xyz.x + 1.8760108*xyz.y + 0.0415560*xyz.z,
+         0.0556434*xyz.x - 0.2040259*xyz.y + 1.0572252*xyz.z
+    );
+}
+
+vec3 wavelengthToRGB(float lambda) {
+    vec3 xyz = vec3(xyzCMF_x(lambda), xyzCMF_y(lambda), xyzCMF_z(lambda));
+    return max(vec3(0.0), xyzToLinearSRGB(xyz)) / vec3(0.378, 0.298, 0.285);
+}
+
+float spectralIOR(float lambda_nm, float cauchy_A) {
+    float lu = lambda_nm * 0.001; // nm → μm
+    return cauchy_A + 0.04 / (lu * lu); // High-dispersion crystal: B=0.04 μm² gives Δn≈0.19 (vivid rainbow)
+}
+#endif
 
 //===================== NOISE FUNCTIONS =========================
 
@@ -330,6 +436,7 @@ lowp int DIFF_BOUNCES         = 0;
 lowp int SPEC_BOUNCES         = 0;
 lowp int TRANS_BOUNCES        = 0;
 lowp int SCATTERING_EVENTS    = 0;
+float g_hero_wavelength       = 550.0; // Hero wavelength for spectral rendering (nm)
 
 //-------------------------------------------------------------------------------
 
@@ -605,12 +712,13 @@ vec2 map( vec3 p ){
 }
 
 vec3 calcNormal( in vec3 pos ){
-    const vec2 eps = vec2(EPSILON, 0.0);
-    
-    return normalize( vec3(
-        map(pos + eps.xyy).x - map(pos - eps.xyy).x,
-        map(pos + eps.yxy).x - map(pos - eps.yxy).x,
-        map(pos + eps.yyx).x - map(pos - eps.yyx).x ) );
+    const vec2 k = vec2(1.0, -1.0);
+    return normalize(
+        k.xyy * map(pos + k.xyy * EPSILON).x +
+        k.yyx * map(pos + k.yyx * EPSILON).x +
+        k.yxy * map(pos + k.yxy * EPSILON).x +
+        k.xxx * map(pos + k.xxx * EPSILON).x
+    );
 }
 
 //-------------------------------------------------------------------------------
@@ -706,9 +814,9 @@ bool iPlane(const Mesh plane, in Ray r, in float tmin, out float t){
 	return (t > EPSILON) && (t < tmin);
 }
 
-//> sphere intersection - optimized
-bool iSphere(const Mesh sphere, in Ray r, in float tmin, out float t){
-    vec3 oc = r.o - sphere.pos;
+//> sphere intersection
+bool iSphere(const Mesh sphere, const Ray r, const float tmin, out float t, const int meshIndex){
+    vec3 oc = r.o - ((RENDER_MODE != 1) ? sphere.pos : getAnimatedPosition(sphere.pos, meshIndex, u_time));
     float b = dot(oc, r.d);
     float c = dot(oc, oc) - sphere.joker.x * sphere.joker.x;
     float discriminant = b * b - c;
@@ -903,7 +1011,7 @@ float intersection(in Ray r, out Hit hit){
         int mesh_type = meshes[i].t;
         
         if(U_SPHERE && mesh_type == SPHERE){
-          if(iSphere(meshes[i], r, tmin, tt))
+          if(iSphere(meshes[i], r, tmin, tt, i))
           {
             tmin = tt;
             type = SPHERE;
@@ -949,7 +1057,7 @@ float intersection(in Ray r, out Hit hit){
           cartesianToSpherical( hit.pos, rho, phi, theta );
 
           hit.uv = vec2(phi/PI, theta/TWO_PI);
-          hit.n =  normalize(hit.pos - meshes[hit.index].pos);
+          hit.n =  normalize(hit.pos - ((RENDER_MODE != 1) ? meshes[hit.index].pos : getAnimatedPosition(meshes[hit.index].pos, hit.index, u_time)));
           // hit.n = (x - spheres[ss[1]].data.xyz)/spheres[ss[1]].data.w;
         }
         else if(U_PLANE && type == PLANE) {
@@ -1032,9 +1140,10 @@ vec3 getRandomDirection(vec3 n, float seed){
 #endif
 }
 
-vec3 randomSphereDirection(float seed){
+vec3 randomSphereDirection(const float seed){
 	vec2 r = hash2(vec2(seed))*TWO_PI;
-  return vec3(sin(r.x)*vec2(sin(r.y),cos(r.y)),cos(r.x));
+  vec2 sincos_y = vec2(sin(r.y), cos(r.y));
+  return vec3(sin(r.x) * sincos_y, cos(r.x));
 }
 
 vec3 randomHemisphereDirection(vec3 n, float seed){
@@ -1042,7 +1151,27 @@ vec3 randomHemisphereDirection(vec3 n, float seed){
   return dot(dr,n) < 0.0 ? -dr : dr;
 }
 
-vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
+#ifdef USE_VOLUMETRICS
+
+// Henyey-Greenstein phase function importance sampling.
+vec3 sampleHG(vec3 w, float g, float seed) {
+    vec2 uv = hash2(vec2(seed, seed + 1.789));
+    float cos_theta;
+    if (abs(g) < 0.001) {
+        cos_theta = 1.0 - 2.0 * uv.x; // isotropic
+    } else {
+        float sqr = (1.0 - g*g) / (1.0 - g + 2.0*g*uv.x);
+        cos_theta = (1.0 + g*g - sqr*sqr) / (2.0*g);
+    }
+    float sin_theta = sqrt(max(0.0, 1.0 - cos_theta*cos_theta));
+    float phi = TWO_PI * uv.y;
+    vec3 t_vec, b_vec;
+    calc_binormals(w, t_vec, b_vec);
+    return normalize(cos(phi)*sin_theta*t_vec + sin(phi)*sin_theta*b_vec + cos_theta*w);
+}
+#endif
+
+vec3 calcDirectLighting(const Mesh light, const vec3 x, const vec3 nl, const float seed, const int lightIndex){
 
   Hit hit;
   vec3 dirLight = vec3(0.0);
@@ -1052,24 +1181,30 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
 
     if(U_SPHERE && light.t == SPHERE){
 
-      vec3 ld = light.pos + (randomSphereDirection(seed + 23.1656) * light.joker.x);
-      vec3 srDir = normalize(ld - x);
+      // Uniform cone sampling
+      vec3 lp = (RENDER_MODE != 1) ? light.pos : getAnimatedPosition(light.pos, lightIndex, u_time);
+      vec3 sw = lp - x;
+      float r2_light = light.joker.x * light.joker.x;
+      float d2_light = dot(sw, sw);
+      float cos_a_max = sqrt(1. - clamp(r2_light / d2_light, 0., 1.));
+      vec3 srDir = getConeSample(normalize(sw), 1.0 - cos_a_max, seed + 23.1656);
 
       // cast shadow ray from intersection point with epsilon offset
       float t = intersection(Ray(x + nl*EPSILON, srDir), hit);
       Mesh mesh = meshes[hit.index];
 
       if( mesh.mat.t == LIGHT ){
-          float r2 = mesh.joker.x * mesh.joker.x;
-          vec3 d = mesh.pos - x;
-          float d2 = dot(d,d);
-          float cos_a_max = sqrt(1. - clamp( r2 / d2, 0., 1.));
           float weight = 2. * (1. - cos_a_max);
-          dirLight += max(mix(mesh.mat.c, hit.texel.rgb, hit.texel.a), 0.001) * mesh.mat.e * weight * max(0.001, dot(srDir, nl));
+#ifdef USE_VOLUMETRICS
+          float T_fog = exp(-VOL_SIGMA_T * t); // Beer-Lambert: fog attenuates shadow rays
+#else
+          float T_fog = 1.0;
+#endif
+          dirLight += max(mix(mesh.mat.c, hit.texel.rgb, hit.texel.a), 0.001) * mesh.mat.e * weight * max(0.001, dot(srDir, nl)) * T_fog;
       }
     } else if(U_SDF && light.t == SDF){
 
-      vec3 ld = light.pos + (randomSphereDirection(seed + 78.2358) * light.joker.xyz);
+      vec3 ld = ((RENDER_MODE != 1) ? light.pos : getAnimatedPosition(light.pos, lightIndex, u_time)) + (randomSphereDirection(seed + 78.2358) * light.joker.xyz);
       vec3 srDir = normalize(ld - x);
 
       // cast shadow ray from intersection point with epsilon offset
@@ -1098,7 +1233,8 @@ vec3 calcDirectLighting(const Mesh light, vec3 x, vec3 nl, float seed){
 float powerHeuristic(float nf, float fPdf, float ng, float gPdf) {
     float f = nf * fPdf;
     float g = ng * gPdf;
-    return (f * f) / (f * f + g * g);
+    float denom = f * f + g * g;
+    return max(0.0, (f * f) / denom);
 }
 
 // Calculate PDF for cosine-weighted hemisphere sampling
@@ -1117,7 +1253,9 @@ float lightSamplingPdf(const Mesh light, vec3 x, vec3 wi) {
         if(d2 <= r2) return 0.0; // Inside sphere
         
         float cos_theta_max = sqrt(max(0.0, 1.0 - r2 / d2));
-        return 1.0 / (TWO_PI * (1.0 - cos_theta_max));
+        float denom = 1.0 - cos_theta_max;
+        if(denom < 1e-6) return 0.0; // light subtends negligible solid angle; avoid INF PDF
+        return 1.0 / (TWO_PI * denom);
     }
     
     return 1.0 / FOUR_PI; // Uniform sphere sampling fallback
@@ -1125,95 +1263,571 @@ float lightSamplingPdf(const Mesh light, vec3 x, vec3 wi) {
 
 //=========================== ReSTIR ===============================
 
+#ifdef USE_RESTIR
+const int RESTIR_SPATIAL_SAMPLES = 8;
+const float SPATIAL_RADIUS = 16.0;
+const float TEMPORAL_ALPHA = 0.95;
+const int MAX_RESERVOIR_AGE = 30;
+const float NORMAL_THRESHOLD = 0.9;
+const float HISTORY_DECAY_RATE = 0.90; 
+const int MAX_TEMPORAL_SAMPLES = 2;
+
 struct Reservoir {
     vec3 light_pos;
     vec3 light_color;
     float weight_sum;
     float M;
     float W;
+    float age;
+    int light_index;
 };
 
-const Reservoir EMPTY_RESERVOIR = Reservoir(vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0);
+const Reservoir EMPTY_RESERVOIR = Reservoir(vec3(0.0), vec3(0.0), 0.0, 0.0, 0.0, 0.0, -1);
 
+// Optimized Poisson disk samples for better spatial distribution
+const vec2 POISSON_DISK[8] = vec2[](
+    vec2(-0.4706, 0.4706),
+    vec2(0.8090, 0.2628),
+    vec2(-0.2628, -0.8090),
+    vec2(0.6882, -0.5000),
+    vec2(-0.9511, -0.1625),
+    vec2(0.1625, 0.9511),
+    vec2(0.5000, -0.6882),
+    vec2(-0.6882, 0.5000)
+);
+#endif // USE_RESTIR
+
+#ifdef USE_RESTIR
 Reservoir initReservoir() {
     return EMPTY_RESERVOIR;
 }
 
-void updateReservoir(inout Reservoir r, vec3 light_pos, vec3 light_color, float weight, float rand) {
+void updateReservoir(inout Reservoir r, vec3 light_pos, vec3 light_color, int light_idx, float weight, float rand) {
+    if (weight <= 0.0) return;
+    
     r.weight_sum += weight;
     r.M += 1.0;
     
-    if (rand * r.weight_sum < weight) {
-        r.light_pos = light_pos;
-        r.light_color = light_color;
+    // Prevent excessive accumulation with better bounds
+    if (r.M > 60.0) {
+        r.weight_sum *= 0.95;
+        r.M *= 0.95;
+    }
+    
+    // Use proper reservoir sampling with normalized probability
+    if (r.weight_sum > 0.0) {
+        float selection_prob = weight / r.weight_sum;
+        if (rand < selection_prob) {
+            r.light_pos = light_pos;
+            r.light_color = light_color;
+            r.light_index = light_idx;
+        }
     }
 }
 
-void finalizeReservoir(inout Reservoir r, vec3 hit_pos, vec3 hit_normal) {
-    if (r.weight_sum > 0.0 && r.M > 0.0) {
-        vec3 light_dir = normalize(r.light_pos - hit_pos);
-        float distance_sq = dot(r.light_pos - hit_pos, r.light_pos - hit_pos);
-        float cos_theta = max(0.0, dot(hit_normal, light_dir));
-        
-        float target_pdf = length(r.light_color) * cos_theta / max(distance_sq, 1.0);
-        
-        if (target_pdf > 0.0) {
-            r.W = (1.0 / r.M) * (r.weight_sum / target_pdf);
-        } else {
-            r.W = 0.0;
+#ifdef USE_RESTIR
+bool isValidNeighbor(const vec3 center_pos, const vec3 center_normal, const vec3 neighbor_pos, const vec3 neighbor_normal) {
+    float normal_similarity = dot(center_normal, neighbor_normal);
+    if (normal_similarity < NORMAL_THRESHOLD) return false;
+    
+    float position_diff = length(center_pos - neighbor_pos);
+    if (position_diff > 2.0) return false;
+    
+    return true;
+}
+
+// Validate reservoir data with improved checks
+bool isValidReservoir(const Reservoir r) {
+    if (isnan(r.M) || isinf(r.M) || isnan(r.weight_sum) || isinf(r.weight_sum) || 
+        isnan(r.W) || isinf(r.W) || isnan(r.age) || isinf(r.age)) {
+        return false;
+    }
+    
+    if (r.M <= 0.0 || r.M > 200.0) return false;
+    if (r.weight_sum <= 0.0 || r.weight_sum > 1000.0) return false;
+    if (r.W < 0.0 || r.W > 20.0) return false;
+    if (r.age < 0.0 || r.age > float(MAX_RESERVOIR_AGE + 5)) return false;
+    
+    float light_color_sq = dot(r.light_color, r.light_color);
+    if (light_color_sq < 0.000001 || light_color_sq > 10000.0) return false;
+
+    if (r.light_index >= int(light_index.length()) && r.light_index != -1) return false;
+
+    if (dot(r.light_pos, r.light_pos) < EPSILON * EPSILON && r.light_index >= 0) return false;
+    
+    return true;
+}
+
+float evaluateTargetFunction(const vec3 light_pos, const vec3 light_color, const vec3 hit_pos, const vec3 hit_normal, const Material mat) {
+    vec3 light_vec = light_pos - hit_pos;
+    float dist_sq = dot(light_vec, light_vec);
+
+    if (dist_sq < EPSILON * EPSILON) return 0.0;
+
+    vec3 light_dir = normalize(light_vec);
+    float cos_theta = max(0.0, dot(hit_normal, light_dir));
+    if (cos_theta <= 0.0) return 0.0;
+
+    // Perceptual luminance of emitted radiance (ITU-R BT.709)
+    float light_lum = dot(light_color, vec3(0.2126, 0.7152, 0.0722));
+    if (light_lum <= 0.0) return 0.0;
+
+    // Precompute shared terms once to avoid recomputing inside branches.
+    float surface_lum = dot(mat.c, vec3(0.2126, 0.7152, 0.0722));
+    float nnt_ratio  = (mat.nt - 1.0) / (mat.nt + 1.0);
+    float R0         = nnt_ratio * nnt_ratio;
+
+    float is_refr = float(mat.t == REFR_FRESNEL || mat.t == REFR_SCHLICK);
+    float is_coat = float(mat.t == COAT);
+    float base    = mix(surface_lum, R0, is_refr);        // REFR overrides surface_lum
+    float brdf_weight = mix(base, (1.0 - R0) * surface_lum, is_coat) * ONE_OVER_PI;
+
+    float safe_dist_sq = max(dist_sq, 1e-4);
+    return light_lum * brdf_weight * cos_theta / safe_dist_sq;
+}
+// Optimized visibility test using shadow ray tracing
+bool isVisible(const vec3 from_pos, const vec3 to_pos) {
+    vec3 shadow_dir = to_pos - from_pos;
+    float shadow_distance = length(shadow_dir);
+    
+    // Avoid self-intersection and very close lights
+    if (shadow_distance < EPSILON * 10.0) return true;
+    
+    shadow_dir = normalize(shadow_dir);
+    
+    // Create shadow ray with appropriate offset
+    Ray shadow_ray = Ray(from_pos + shadow_dir * EPSILON * 2.0, shadow_dir);
+    
+    Hit shadow_hit;
+    float t = intersection(shadow_ray, shadow_hit);
+    
+    // If we hit something before reaching the light, check if it's occluding
+    if (t < shadow_distance - EPSILON * 2.0) {
+        // Allow light sources to be visible through themselves
+        if (shadow_hit.index >= 0 && shadow_hit.index < NUM_MESHES + NUM_SDFS) {
+            return meshes[shadow_hit.index].mat.t == LIGHT;
         }
+        return false;
+    }
+    
+    return true;
+}
+#endif // USE_RESTIR
+
+// Pack reservoir data into two RGBA textures (enhanced packing)
+vec4 packReservoirMain(const Reservoir r) {
+    // Main buffer: light_pos.xyz in RGB, W in A
+    return vec4(r.light_pos, r.W);
+}
+
+vec4 packReservoirAux(const Reservoir r) {
+    // Auxiliary buffer: light_color.xyz in RGB, packed data in A
+    float normalized_age = clamp(r.age / float(MAX_RESERVOIR_AGE), 0.0, 1.0);
+    float normalized_M = clamp(r.M / 100.0, 0.0, 1.0); // Assume M is typically 0-100
+    float normalized_light_index = float(r.light_index + 1) / float(max(light_index.length(), 1)); // +1 to handle -1 case
+    
+    // Pack age, M, and light_index into alpha
+    float packed_alpha = normalized_age * 0.33 + normalized_M * 0.33 + normalized_light_index * 0.34;
+    
+    return vec4(r.light_color, packed_alpha);
+}
+
+// Unpack reservoir data from RGBA texture
+// Enhanced unpacking using two buffers
+Reservoir unpackReservoirEnhanced(const vec4 main_data, const vec4 aux_data) {
+    Reservoir r = EMPTY_RESERVOIR;
+    
+    if (main_data.w > 0.0) {
+        // Unpack main buffer
+        r.light_pos = main_data.xyz;
+        r.W = main_data.w;
+        
+        // Unpack auxiliary buffer
+        r.light_color = aux_data.xyz;
+        
+        float packed_alpha = aux_data.w;
+        float normalized_light_index = fract(packed_alpha * 2.94); // Extract light_index
+        float temp = packed_alpha - normalized_light_index * 0.34;
+        float normalized_M = fract(temp * 3.03); // Extract M
+        float normalized_age = (temp - normalized_M * 0.33) * 3.03; // Extract age
+        
+        // Denormalize values
+        r.age = normalized_age * float(MAX_RESERVOIR_AGE);
+        r.M = normalized_M * 100.0;
+        r.light_index = int(normalized_light_index * float(max(light_index.length(), 1))) - 1;
+        
+        // Clamp values
+        r.light_index = clamp(r.light_index, -1, int(light_index.length()) - 1);
+        r.M = max(1.0, r.M);
+        
+        // Reconstruct weight_sum
+        r.weight_sum = r.W * r.M;
+    }
+    
+    return r;
+}
+
+#ifdef USE_RESTIR
+// Sample reservoir from neighboring pixel (spatial reuse)
+Reservoir sampleSpatialReservoir(const vec2 neighbor_coord, const vec3 center_pos, const vec3 center_normal) {
+    // Clamp to screen bounds
+    if (neighbor_coord.x < 0.0 || neighbor_coord.x > 1.0 || neighbor_coord.y < 0.0 || neighbor_coord.y > 1.0) {
+        return EMPTY_RESERVOIR;
+    }
+    
+    // Sample from ReSTIR buffers (current frame spatial neighbors)
+    vec4 main_data = textureLod(u_restir_buffer, neighbor_coord, 0.0);
+    vec4 aux_data = textureLod(u_restir_aux, neighbor_coord, 0.0);
+    return unpackReservoirEnhanced(main_data, aux_data);
+}
+
+// Enhanced multi-frame temporal sampling
+Reservoir sampleTemporalHistory(const vec2 screen_coord, const vec3 current_pos, const vec3 current_normal, const int history_level) {
+    // Improved motion vector calculation based on camera movement
+    vec3 prev_cam_pos = u_camPos; // In a full implementation, this would be previous frame's camera position
+    vec3 motion_3d = current_pos - prev_cam_pos;
+    
+    // Project motion to screen space with level-dependent scaling
+    float motion_scale = 0.001 * float(history_level + 1);
+    vec2 motion_vector = motion_3d.xy * motion_scale;
+    
+    // Add temporal jitter for better sampling distribution
+    vec2 temporal_jitter = (hash2(screen_coord + float(uint(history_level) + u_frame) * 0.1) - 0.5) * 0.002;
+    vec2 prev_coord = screen_coord + motion_vector + temporal_jitter;
+    
+    // Clamp to screen bounds with margin
+    if (prev_coord.x < 0.01 || prev_coord.x > 0.99 || prev_coord.y < 0.01 || prev_coord.y > 0.99) {
+        return EMPTY_RESERVOIR;
+    }
+    
+    vec4 main_data, aux_data;
+    
+    // Sample from appropriate history buffer based on level (fixed to use proper 2-frame history)
+    if (history_level == 0) {
+        // Most recent frame (1 frame ago) - use history1
+        main_data = textureLod(u_restir_history1, prev_coord, 0.0);
+        aux_data = textureLod(u_restir_history1_aux, prev_coord, 0.0);
     } else {
+        // Second frame back (2 frames ago) - use history2
+        main_data = textureLod(u_restir_history2, prev_coord, 0.0);
+        aux_data = textureLod(u_restir_history2_aux, prev_coord, 0.0);
+    }
+    
+    Reservoir temporal_reservoir = unpackReservoirEnhanced(main_data, aux_data);
+    
+    if (isValidReservoir(temporal_reservoir)) {
+        temporal_reservoir.age += float(history_level + 1);
+    }
+    
+    return temporal_reservoir;
+}
+
+void finalizeReservoir(inout Reservoir r, const vec3 hit_pos, const vec3 hit_normal, const Material mat) {
+    if (r.weight_sum <= 0.0 || r.M <= 0.0) {
+        r.W = 0.0;
+        return;
+    }
+    
+    float target_pdf = evaluateTargetFunction(r.light_pos, r.light_color, hit_pos, hit_normal, mat);
+    
+    if (target_pdf <= 0.0) {
+        r.W = 0.0;
+        return;
+    }
+    
+    // Visibility test early to avoid computing invalid weights
+    bool is_visible = isVisible(hit_pos, r.light_pos);
+    if (!is_visible) {
+        r.W = 0.0;
+        return;
+    }
+    
+    // Clamp M to prevent numerical issues
+    float clamped_M = clamp(r.M, 1.0, 40.0);
+    
+    // Basic ReSTIR weight calculation: w_sum / (p * M)
+    float raw_weight = r.weight_sum / (target_pdf * clamped_M);
+    
+    // Simplified bias correction for better stability
+    float bias_correction = 1.0;
+    
+    // Age-based correction (more balanced)
+    if (r.age > 0.0) {
+        float normalized_age = clamp(r.age / float(MAX_RESERVOIR_AGE), 0.0, 1.0);
+        // Less aggressive age correction
+        bias_correction *= mix(0.85, 1.0, 1.0 - normalized_age * 0.3);
+    }
+    
+    // M-based correction (less aggressive)
+    if (clamped_M > 16.0) {
+        bias_correction *= sqrt(16.0 / clamped_M);
+    }
+    
+    // Apply correction and compute final weight
+    r.W = bias_correction * raw_weight;
+    
+    // Clamp to prevent fireflies but allow reasonable dynamic range
+    r.W = clamp(r.W, 0.0, 12.0);
+    
+    // Additional safety check for NaN/Inf
+    if (isnan(r.W) || isinf(r.W)) {
         r.W = 0.0;
     }
 }
 
-vec3 sampleLightsReSTIR(vec3 hit_pos, vec3 hit_normal, vec2 rand_seed) {
+// Combine reservoirs using weighted reservoir sampling
+void combineReservoirs(inout Reservoir target, const Reservoir source, const vec3 hit_pos, const vec3 hit_normal, const Material mat, const float rand) {
+    if (!isValidReservoir(source)) return;
+
+    // Evaluate target function for source reservoir at current shading point
+    float target_weight = evaluateTargetFunction(source.light_pos, source.light_color, hit_pos, hit_normal, mat);
+    
+    if (target_weight <= 0.0) return;
+    
+    float source_contribution = clamp(target_weight * max(source.W, 0.0) * max(source.M, 1.0), 0.0, 200.0);
+
+    target.weight_sum += source_contribution;
+    target.M += source.M;
+
+    // Cap M to bound bias accumulation. Scale weight_sum proportionally
+    // so W = weight_sum / (p̂ · M) remains consistent. Avoids exp().
+    if (target.M > 40.0) {
+        float inv_scale = 40.0 / target.M;
+        target.weight_sum *= inv_scale;
+        target.M = 40.0;
+    }
+    
+    // Update selected sample with probability proportional to contribution
+    if (target.weight_sum > 0.0) {
+        float selection_probability = source_contribution / target.weight_sum;
+        if (rand < selection_probability) {
+            target.light_pos = source.light_pos;
+            target.light_color = source.light_color;
+            target.light_index = source.light_index;
+            // Inherit age but add some decay (smaller increment)
+            target.age = min(source.age + 0.25, float(MAX_RESERVOIR_AGE));
+        }
+    }
+}
+#endif // USE_RESTIR
+
+#ifdef USE_RESTIR
+// Global variable to store the final reservoir for output
+Reservoir g_final_reservoir;
+#endif
+
+vec3 sampleLightsReSTIR(const vec3 hit_pos, const vec3 hit_normal, const Material mat, const vec2 rand_seed) {
     if (!use_restir) {
         return vec3(0.0);
     }
     
-    if (light_index.length() == 0 || light_index[0] < 0) {
+    if (light_index.length() == 0 || int(light_index[0]) < 0) {
         return vec3(0.0);
     }
     
-    Reservoir reservoir = initReservoir();
+    vec2 screen_coord = gl_FragCoord.xy / u_resolution;
     
-    int effective_samples = min(RESTIR_SAMPLES, max(8, light_index.length() / 2));
-    int NUM_LIGHT_SAMPLES = effective_samples;
+    // Phase 1: Initial Candidate Sampling
+    Reservoir initial_reservoir = initReservoir();
     
-    for (int i = 0; i < NUM_LIGHT_SAMPLES; i++) {
+    int effective_samples = min(int(RESTIR_SAMPLES), max(int(4), int(light_index.length())));
+    
+    for (int i = 0; i < effective_samples; i++) {
         vec2 rand_val = hash2(rand_seed + vec2(float(i) * 0.1, float(i) * 0.2));
         
         // Select a random light from the light_index array
         int light_array_idx = int(rand_val.x * float(light_index.length()));
-        light_array_idx = clamp(light_array_idx, 0, light_index.length() - 1);
+        light_array_idx = clamp(light_array_idx, int(0), int(light_index.length()) - 1);
         
-        int light_idx = light_index[light_array_idx];
+        int light_idx = int(light_index[light_array_idx]);
         if (light_idx < 0 || light_idx >= NUM_MESHES + NUM_SDFS) continue;
         
-        vec3 light_contribution = calcDirectLighting(meshes[light_idx], hit_pos, hit_normal, rand_seed.x + float(i) * 123.456);
+        vec3 light_pos = (RENDER_MODE != 1) ? meshes[light_idx].pos : getAnimatedPosition(meshes[light_idx].pos, light_idx, u_time);
+        vec3 light_color = meshes[light_idx].mat.c * meshes[light_idx].mat.e;
         
-        vec3 light_dir = normalize(meshes[light_idx].pos - hit_pos);
-        float distance_sq = dot(meshes[light_idx].pos - hit_pos, meshes[light_idx].pos - hit_pos);
-        float cos_theta = max(0.0, dot(hit_normal, light_dir));
-        
-        // Target function for ReSTIR: combines BRDF, light contribution, and geometry
-        float target_value = length(light_contribution) * cos_theta / max(distance_sq, 1.0);
+        // Evaluate target function
+        float target_value = evaluateTargetFunction(light_pos, light_color, hit_pos, hit_normal, mat);
         
         if (target_value > 0.0) {
-            updateReservoir(reservoir, meshes[light_idx].pos, light_contribution, target_value, rand_val.y);
+            updateReservoir(initial_reservoir, light_pos, light_color, light_idx, target_value, rand_val.y);
         }
     }
     
-    // Proper ReSTIR weight calculation: W = (1/M) * (weight_sum / target_pdf)
-    finalizeReservoir(reservoir, hit_pos, hit_normal);
+    // Phase 2: Enhanced 2-Frame Temporal Reuse
+    Reservoir temporal_reservoir = initial_reservoir;
     
-    if (reservoir.W > 0.0) {
-        return reservoir.light_color * reservoir.W;
+    // Use temporal reuse for both animated (RENDER_MODE == 1) and static scenes when frame count allows
+    if (u_frame > uint(MAX_TEMPORAL_SAMPLES)) {
+        // Sample from 2 temporal history levels only
+        int temporal_samples_used = 0;
+        
+        for (int history_level = 0; history_level < MAX_TEMPORAL_SAMPLES; history_level++) {
+            Reservoir history_reservoir = sampleTemporalHistory(screen_coord, hit_pos, hit_normal, history_level);
+            
+            if (isValidReservoir(history_reservoir) && history_reservoir.M > 0.0 && history_reservoir.age < float(MAX_RESERVOIR_AGE)) {
+                // For animated scenes, update light positions for history
+                if (RENDER_MODE == 1 && history_reservoir.light_index >= 0 && history_reservoir.light_index < int(light_index.length())) {
+                    int actual_light_idx = int(light_index[history_reservoir.light_index]);
+                    if (actual_light_idx >= 0 && actual_light_idx < NUM_MESHES + NUM_SDFS) {
+                        vec3 current_light_pos = getAnimatedPosition(meshes[actual_light_idx].pos, actual_light_idx, u_time);
+                        history_reservoir.light_pos = current_light_pos;
+                        history_reservoir.light_color = meshes[actual_light_idx].mat.c * meshes[actual_light_idx].mat.e;
+                    }
+                }
+                
+                // Age the reservoir based on history level
+                history_reservoir.age += float(history_level + 1);
+                float temporal_alpha = TEMPORAL_ALPHA;
+                
+                // Apply decay based on history level (stronger decay for older frames)
+                if (history_level == 1) {
+                    temporal_alpha *= 0.80; // Stronger decay for 2nd frame back
+                }
+                
+                // Additional reduction for animated scenes to prevent lag artifacts
+                if (RENDER_MODE == 1) {
+                    temporal_alpha *= 0.85;
+                }
+                
+                // Apply temporal decay
+                history_reservoir.M *= temporal_alpha;
+                history_reservoir.weight_sum *= temporal_alpha;
+                
+                // Combine with temporal reservoir using proper random value
+                float temporal_rand = hash(rand_seed.x + 789.123 + float(history_level) * 456.789);
+                combineReservoirs(temporal_reservoir, history_reservoir, hit_pos, hit_normal, mat, temporal_rand);
+                
+                temporal_samples_used++;
+            }
+        }
+        
+        // Additional validation after temporal combination
+        if (temporal_reservoir.M > 100.0) {
+            temporal_reservoir.M = min(temporal_reservoir.M, 80.0);
+            temporal_reservoir.weight_sum *= 0.9; // Slight reduction to prevent bias
+        }
+    }
+    
+    // Phase 3: Spatial Reuse
+    Reservoir final_reservoir = temporal_reservoir;
+    
+    // Adaptive spatial sample count based on light count and frame number
+    int adaptive_spatial_samples = int(RESTIR_SPATIAL_SAMPLES);
+    if (light_index.length() > 10) {
+        adaptive_spatial_samples = max(4, int(RESTIR_SPATIAL_SAMPLES) / 2);
+    }
+    
+    // Reduce spatial samples for first few frames to improve convergence
+    if (u_frame < 10u) {
+        adaptive_spatial_samples = max(2, adaptive_spatial_samples / 2);
+    }
+    
+    for (int i = 0; i < adaptive_spatial_samples; i++) {
+        vec2 spatial_rand = hash2(rand_seed + vec2(float(i) * 0.3, float(i) * 0.4));
+        
+        // Generate neighbor coordinate using Poisson disk
+        vec2 neighbor_offset = POISSON_DISK[i] * SPATIAL_RADIUS / u_resolution;
+        vec2 neighbor_coord = screen_coord + neighbor_offset;
+        
+        // Sample neighbor reservoir
+        Reservoir neighbor_reservoir = sampleSpatialReservoir(neighbor_coord, hit_pos, hit_normal);
+        
+        if (neighbor_reservoir.M > 0.0) {
+            // Optimized spatial validation with early exits
+            bool is_valid = true;
+            
+            // Early bounds check
+            if (any(lessThan(neighbor_coord, vec2(0.0))) || any(greaterThan(neighbor_coord, vec2(1.0)))) {
+                is_valid = false;
+            }
+            
+            if (is_valid) {
+                // Distance-based coherence check
+                vec2 coord_diff = neighbor_coord - screen_coord;
+                float coord_distance_sq = dot(coord_diff, coord_diff);
+                float max_distance_sq = pow(SPATIAL_RADIUS / min(u_resolution.x, u_resolution.y), 2.0);
+                
+                if (coord_distance_sq > max_distance_sq) {
+                    is_valid = false;
+                }
+            }
+            
+            if (is_valid && neighbor_reservoir.light_index >= 0) {
+                // Light distance check with squared distance for efficiency
+                vec3 light_diff = neighbor_reservoir.light_pos - hit_pos;
+                float light_distance_sq = dot(light_diff, light_diff);
+                if (light_distance_sq > 225.0) { // 15.0^2
+                    is_valid = false;
+                }
+            }
+            
+            if (is_valid) {
+                // Age and quality checks
+                float age_threshold = RENDER_MODE == 1 ? 2.0 : float(MAX_RESERVOIR_AGE) * 0.8;
+                if (neighbor_reservoir.age > age_threshold || spatial_rand.x < 0.03) {
+                    is_valid = false;
+                }
+            }
+            
+            if (is_valid) {
+                combineReservoirs(final_reservoir, neighbor_reservoir, hit_pos, hit_normal, mat, spatial_rand.y);
+            }
+        }
+    }
+    
+    // Phase 4: Final Weight Calculation
+    finalizeReservoir(final_reservoir, hit_pos, hit_normal, mat);
+    
+    // Clamp reservoir age and validate
+    final_reservoir.age = min(final_reservoir.age, float(MAX_RESERVOIR_AGE));
+    
+    // Store final reservoir for output to buffer
+    g_final_reservoir = final_reservoir;
+    
+    if (final_reservoir.W > 0.0 && final_reservoir.light_index >= 0 && final_reservoir.light_index < int(light_index.length())) {
+        // Validate light index bounds
+        int light_array_idx = clamp(final_reservoir.light_index, 0, int(light_index.length()) - 1);
+        int actual_light_idx = int(light_index[light_array_idx]);
+        
+        if (actual_light_idx >= 0 && actual_light_idx < NUM_MESHES + NUM_SDFS) {
+            // For animated scenes, use current light position, not the reservoir's stored position
+            vec3 current_light_pos;
+            if (RENDER_MODE == 1) {
+                current_light_pos = getAnimatedPosition(meshes[actual_light_idx].pos, actual_light_idx, u_time);
+                // Update reservoir with current position for consistency
+                final_reservoir.light_pos = current_light_pos;
+                final_reservoir.light_color = meshes[actual_light_idx].mat.c * meshes[actual_light_idx].mat.e;
+            } else {
+                current_light_pos = final_reservoir.light_pos;
+            }
+            
+            bool still_visible = (RENDER_MODE != 1) || isVisible(hit_pos, current_light_pos);
+            if (still_visible) {
+                // Calculate final lighting contribution using updated mesh data
+                vec3 light_contribution = calcDirectLighting(meshes[actual_light_idx], hit_pos, hit_normal, rand_seed.x + 456.789, actual_light_idx);
+                
+                // Apply ReSTIR weight with proper scaling and additional validation
+                float effective_weight = clamp(final_reservoir.W, 0.0, 8.0);
+                
+                // Additional bias correction for high sample counts
+                if (final_reservoir.M > 30.0) {
+                    effective_weight *= sqrt(30.0 / final_reservoir.M);
+                }
+                
+                // Prevent NaN/infinity in final result
+                vec3 final_contribution = light_contribution * effective_weight;
+                if (any(isnan(final_contribution)) || any(isinf(final_contribution))) {
+                    return vec3(0.0);
+                }
+                
+                return final_contribution;
+            }
+        }
     }
     
     return vec3(0.0);
 }
+#endif // USE_RESTIR
 
 void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout Ray r, inout vec3 mask, inout vec3 acc, inout bool bounceIsSpecular, in float seed, in float bounce){
 
@@ -1222,27 +1836,34 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
   vec3 nl = hit.n * inside;
 
   vec3 _randomDir = getRandomDirection(nl, seed + 7.1*float(u_frame) + 5681.123 + bounce*92.13);
-//  vec3 _randomSphereDirection = randomSphereDirection(seed + 12.456*u_time + bounce*136.045);
 
   // material e is also used as a glossiness factor
   vec3 _roughness = e * _randomDir;
-//  vec3 _reflDirection = normalize(_roughness + reflect(r.d, nl));
 
-  float nc = ior_air;                   // IOR of air
-  float nt = meshes[hit.index].mat.nt;  // IOR of mesh
+  float nc = ior_air;                        // IOR of air
+  float nt       = meshes[hit.index].mat.nt; // IOR of mesh (negative = spectral)
+  int   mat_type = meshes[hit.index].mat.t;
 
-  if(meshes[hit.index].mat.t == DIFF){ // DIFFUSE
+  // Spectral glass: nt < 0 → compute wavelength-dependent IOR via Cauchy's equation.
+#ifdef USE_SPECTRAL
+  float nt_eff = (nt < 0.0) ? spectralIOR(g_hero_wavelength, abs(nt)) : nt;
+#else
+  float nt_eff = abs(nt); // handle negative nt gracefully without spectral
+#endif
+
+  if(mat_type == DIFF){ // DIFFUSE
     r = Ray(x + nl*EPSILON, _randomDir);
     mask *= f;
 
     ++DIFF_BOUNCES;
     bounceIsSpecular = false;
-  } else if(meshes[hit.index].mat.t == SPEC){
+  } else if(mat_type == SPEC){
     r = Ray(x + nl*EPSILON, normalize(_roughness + reflect(r.d, nl)));
+    mask *= f;
     ++SPEC_BOUNCES;
     bounceIsSpecular = true;
-  } else if(meshes[hit.index].mat.t == REFR_FRESNEL || meshes[hit.index].mat.t == REFR_SCHLICK){ // REFRACTIVE
-    float nnt = inside < 0. ? nt/nc : nc/nt;
+  } else if(mat_type == REFR_FRESNEL || mat_type == REFR_SCHLICK){ // REFRACTIVE
+    float nnt = inside < 0. ? nt_eff/nc : nc/nt_eff; // spectral IOR for dispersion
     vec3 tdir = refract(r.d, nl, nnt);
 
     r.o = x;
@@ -1260,7 +1881,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
     tdir = normalize(_roughness + tdir);
 
     // select either schlick or fresnel approximation
-    float Re = mix(schlick(r, nl, nc, nt), fresnel(r, nl, nc, nt, tdir), float(meshes[hit.index].mat.t == REFR_FRESNEL));
+    float Re = mix(schlick(r, nl, nc, nt_eff), fresnel(r, nl, nc, nt_eff, tdir), float(mat_type == REFR_FRESNEL));
 
     if( hash(seed) < Re){
       r.o += nl*EPSILON;
@@ -1273,11 +1894,11 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
       ++SCATTERING_EVENTS;
     }
     bounceIsSpecular = true;
-  } else if(meshes[hit.index].mat.t == COAT){  // COAT
+  } else if(mat_type == COAT){  // COAT
     r.o = x + nl*EPSILON;
 
     // choose either specular reflection or diffuse
-    if( hash(seed) < schlick(r, nl, nc, nt) ){
+    if( hash(seed) < schlick(r, nl, nc, nt_eff) ){
       r.d = normalize(_roughness + reflect(r.d, nl));
       ++SPEC_BOUNCES;
       bounceIsSpecular = true;
@@ -1297,60 +1918,30 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
 
     float t = intersection(Ray(x + nl*EPSILON, srDir), hit);
     if(t == INFINITY){
-      acc += mask * texture(u_cubemap, srDir).rgb * max(0.001, dot(srDir, nl));
+      // With cosine-weighted sampling (USE_BIASED_SAMPLING), pdf = cos(θ)/π and
+      // BRDF = albedo/π, so the MC weight simplifies to albedo (already in mask).
+      acc += mask * texture(u_cubemap, srDir).rgb;
     }
 #endif
 
     if(sample_lights){
       if(use_restir && use_mis){
+#ifdef USE_RESTIR
         vec3 totalContribution = vec3(0.0);
-        float totalWeight = 0.0;
-        
+
         // Determine sampling strategy based on light count
-        int num_lights = light_index.length();
-        bool use_stratified = num_lights > 8;
+        int num_lights = int(light_index.length());
+        bool use_stratified = num_lights > int(8);
         
         if (use_stratified) {
           vec2 restir_seed = vec2(seed + 8652.1*float(u_frame) + bounce*7895.13, seed + 1234.567*float(u_frame) + bounce*9876.54);
-          vec3 restirContribution = sampleLightsReSTIR(x, nl, restir_seed);
-          
-          vec3 misContribution = vec3(0.0);
-          int high_importance_lights = min(6, num_lights); 
-          
-          for(int i = 0; i < high_importance_lights; ++i){
-            int idx = light_index[i];
-            if(idx < 0) continue;
-            Mesh light = meshes[idx];
-            if(light.mat.t != LIGHT) continue;
-
-            vec3 light_vec = light.pos - x;
-            vec3 light_dir = normalize(light_vec);
-            float distance_sq = dot(light_vec, light_vec);
-            float cos_theta = max(0.0, dot(nl, light_dir));
-            float importance = cos_theta * length(light.mat.e) * inversesqrt(distance_sq + 1.0);
-
-            float impStep = step(kImportanceThreshold, importance);
-            vec3 lightSample = calcDirectLighting(light, x, nl, seed + kSeedA*float(u_frame) + kSeedB + bounce*kSeedC + float(i)*kSeedD);
-            float sampleLen = length(lightSample);
-            float sampleStep = step(kImportanceThreshold, sampleLen);
-            float valid = impStep * sampleStep;
-            float lightPdf = lightSamplingPdf(light, x, light_dir);
-            float brdfPdf = cosineHemispherePdf(light_dir, nl);
-            float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
-            misContribution += lightSample * misWeight * importance * valid;
-          }
-          
-          if (high_importance_lights > 0) {
-            misContribution /= float(high_importance_lights);
-          }
-          
-          totalContribution = restirContribution * 0.7 + misContribution * 0.3;
+          totalContribution = sampleLightsReSTIR(x, nl, meshes[hit.index].mat, restir_seed);
         } else {
           vec3 enhancedMisContribution = vec3(0.0);
           float totalImportance = 0.0;
           
           for(int i = 0; i < num_lights; ++i){
-            int idx = light_index[i];
+            int idx = int(light_index[i]);
             if(idx < 0) continue;
             Mesh light = meshes[idx];
             if(light.mat.t != LIGHT) continue;
@@ -1359,12 +1950,12 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
             vec3 light_dir = normalize(light_vec);
             float distance_sq = dot(light_vec, light_vec);
             float cos_theta = max(0.0, dot(nl, light_dir));
-            float importance = cos_theta * length(light.mat.e) * inversesqrt(distance_sq + 1.0);
+            float importance = cos_theta * dot(light.mat.e, vec3(0.2126, 0.7152, 0.0722)) * inversesqrt(distance_sq + 1.0);
             totalImportance += importance;
           }
           
           for(int i = 0; i < num_lights; ++i){
-            int idx = light_index[i];
+            int idx = int(light_index[i]);
             if(idx < 0) continue;
             Mesh light = meshes[idx];
             if(light.mat.t != LIGHT) continue;
@@ -1373,44 +1964,44 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
             vec3 light_dir = normalize(light_vec);
             float distance_sq = dot(light_vec, light_vec);
             float cos_theta = max(0.0, dot(nl, light_dir));
-            float importance = cos_theta * length(light.mat.e) * inversesqrt(distance_sq + 1.0);
+            float importance = cos_theta * dot(light.mat.e, vec3(0.2126, 0.7152, 0.0722)) * inversesqrt(distance_sq + 1.0);
 
             float impStep = step(kImportanceThreshold, importance);
             float totalImpStep = step(0.0, totalImportance);
-            vec3 lightSample = calcDirectLighting(light, x, nl, seed + kSeedA*float(u_frame) + kSeedB + bounce*kSeedC + float(i)*kSeedD);
-            float sampleLen = length(lightSample);
-            float sampleStep = step(kImportanceThreshold, sampleLen);
+            vec3 lightSample = calcDirectLighting(light, x, nl, seed + kSeedA*float(u_frame) + kSeedB + bounce*kSeedC + float(i)*kSeedD, idx);
+            float sampleLenSq = dot(lightSample, lightSample);
+            float sampleStep = step(kImportanceThreshold * kImportanceThreshold, sampleLenSq);
             float valid = impStep * totalImpStep * sampleStep;
             float lightPdf = lightSamplingPdf(light, x, light_dir);
             float brdfPdf = cosineHemispherePdf(light_dir, nl);
             float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
-            float enhancedWeight = misWeight * (importance / max(totalImportance, 1e-6));
-            vec2 reservoir_rand = hash2(vec2(seed + float(i) * kSeedD, bounce * 789.123));
-            float reservoirValid = mix(float(reservoir_rand.x < enhancedWeight), 1.0, float(i == 0));
-            enhancedMisContribution += lightSample * enhancedWeight * valid * reservoirValid;
+            enhancedMisContribution += lightSample * misWeight * valid;
           }
           
           totalContribution = enhancedMisContribution;
         }
         
         acc += totalContribution * mask;
+#endif // USE_RESTIR
       } else if(use_restir){
+#ifdef USE_RESTIR
         vec2 restir_seed = vec2(seed + 8652.1*float(u_frame) + bounce*7895.13, seed + 1234.567*float(u_frame) + bounce*9876.54);
-        vec3 restirContribution = sampleLightsReSTIR(x, nl, restir_seed);
+        vec3 restirContribution = sampleLightsReSTIR(x, nl, meshes[hit.index].mat, restir_seed);
         acc += restirContribution * mask;
+#endif // USE_RESTIR
       } else if(use_mis && light_index.length() > 0){
         vec3 misContribution = vec3(0.0);
         
-        for(int i = 0; i < light_index.length(); ++i){
-          if(light_index[i] < 0) continue;
+        for(int i = 0; i < int(light_index.length()); ++i){
+          if(int(light_index[i]) < 0) continue;
           
-          Mesh light = meshes[light_index[i]];
+          Mesh light = meshes[int(light_index[i])];
           if(light.mat.t != LIGHT) continue;
           
-          vec3 lightSample = calcDirectLighting(light, x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13 + float(i)*123.456);
+          vec3 lightSample = calcDirectLighting(light, x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13 + float(i)*123.456, int(light_index[i]));
           
-          if(length(lightSample) > 0.001) {
-            vec3 lightDir = normalize(light.pos - x);
+          if(dot(lightSample, lightSample) > 0.000001) {
+            vec3 lightDir = normalize(((RENDER_MODE != 1) ? light.pos : getAnimatedPosition(light.pos, int(light_index[i]), u_time)) - x);
             float lightPdf = lightSamplingPdf(light, x, lightDir);
             float brdfPdf = cosineHemispherePdf(lightDir, nl);
             float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
@@ -1421,9 +2012,9 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
         
         acc += misContribution * mask;
       } else {
-        for(int i = 0; i < light_index.length(); ++i){
-          if(light_index[i] >= 0) {
-            acc += calcDirectLighting(meshes[light_index[i]], x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13)*mask;
+        for(int i = 0; i < int(light_index.length()); ++i){
+          if(int(light_index[i]) >= 0) {
+            acc += calcDirectLighting(meshes[int(light_index[i])], x, nl, seed + 8652.1*float(u_frame) + 5681.123 + bounce*7895.13, int(light_index[i]))*mask;
           }
         }
       }
@@ -1443,11 +2034,68 @@ vec3 radiance(Ray r, float seed){
   vec3 mask = vec3(1.);
 
   bool bounceIsSpecular = true;
+  vec3 prev_nl = vec3(0.0, 1.0, 0.0);
 
   for (int depth = 0; depth < MAX_BOUNCES; ++depth){
 
     Hit hit;
     float t = intersection(r, hit);
+
+#ifdef USE_VOLUMETRICS
+    // Exponential free-path sampling in homogeneous participating medium.
+    // weight = σ_s/σ_t (single-scatter albedo; transmittance/pdf cancel exactly).
+    {
+        float scatter_d = -log(max(hash(seed + 4729.3 + float(depth)*991.1), 1e-6)) / VOL_SIGMA_T;
+        float t_bound   = (t < INFINITY) ? t : 1e4;
+        if (scatter_d < t_bound) {
+            vec3 scatter_pos = r.o + scatter_d * r.d;
+
+            // Apply single-scatter albedo weight
+            mask *= VOL_SIGMA_S / VOL_SIGMA_T;
+
+            if (sample_lights) {
+                int num_lights = int(light_index.length());
+                for (int li = 0; li < num_lights; ++li) {
+                    int light_idx = int(light_index[li]);
+                    if (light_idx < 0) continue;
+                    Mesh lm = meshes[light_idx];
+                    if (lm.mat.t != LIGHT || lm.t != SPHERE) continue;
+
+                    vec3 dl_center = lm.pos - scatter_pos;
+                    float dist_center = length(dl_center);
+                    float r2_l      = lm.joker.x * lm.joker.x;
+                    float cos_a_max = sqrt(1.0 - clamp(r2_l / (dist_center * dist_center), 0.0, 1.0));
+                    vec3 dir_l = getConeSample(dl_center / dist_center, 1.0 - cos_a_max,
+                                               seed + 2341.7 + float(li)*917.3 + float(depth)*199.1);
+
+                    Hit sh;
+                    float t_shadow = intersection(Ray(scatter_pos + dir_l * (EPSILON * 20.0), dir_l), sh);
+                    if (sh.index != light_idx) continue;
+
+                    float omega = 2.0 * (1.0 - cos_a_max);
+
+                    // Henyey-Greenstein phase function (evaluated, not sampled)
+                    // p(cos_θ) = (1-g²) / (4π (1+g²-2g·cos_θ)^(3/2))
+                    float cos_theta = dot(r.d, dir_l);
+                    float g2        = VOL_G * VOL_G;
+                    float denom     = 1.0 + g2 - 2.0 * VOL_G * cos_theta;
+                    float phase     = (1.0 - g2) / (FOUR_PI * denom * sqrt(denom));
+
+                    // Beer-Lambert transmittance through fog to the light
+                    float T_fog = exp(-VOL_SIGMA_T * t_shadow);
+
+                    acc += mask * lm.mat.c * lm.mat.e * phase * T_fog * (PI * omega);
+                }
+            }
+
+            r = Ray(scatter_pos, sampleHG(r.d, VOL_G, seed + 8293.7 + float(depth)*773.3));
+            bounceIsSpecular = false;
+            ++SCATTERING_EVENTS;
+            if (SCATTERING_EVENTS >= MAX_SCATTERING_EVENTS || max(mask.r, max(mask.g, mask.b)) < 0.01) break;
+            continue;
+        }
+    }
+#endif
 
     if(t == INFINITY){
 
@@ -1456,7 +2104,7 @@ vec3 radiance(Ray r, float seed){
 #ifdef USE_CUBEMAP
         acc += mask * texture(u_cubemap, r.d).rgb;
 #elif defined (USE_PROCEDURAL_SKY)
-        acc += mask * vec3(0.5) + vec3(0.5) * cos(TWO_PI * (vec3(0.525, 0.408, 0.409) + vec3(0.9, 0.97, 0.8) * clamp(r.d.y * 0.6 + 0.5, 0.3, 1.0)));
+        acc += mask * (vec3(0.5) + vec3(0.5) * cos(TWO_PI * (vec3(0.525, 0.408, 0.409) + vec3(0.9, 0.97, 0.8) * clamp(r.d.y * 0.6 + 0.5, 0.3, 1.0))));
 #endif
 
       break;
@@ -1474,27 +2122,20 @@ vec3 radiance(Ray r, float seed){
     vec3 e = max(mix(mesh.mat.e, hit.texel.rgb * mesh.mat.tex.e_mask, float(mesh.mat.opts[1])*hit.texel.a), 0.001);
 
     if(mesh.mat.t == LIGHT){
-      if(bounceIsSpecular || !sample_lights){
-        mask *= c;
-        acc += mask*e;
-      } else if(use_mis && depth > 0) {
-        // BRDF sampling contribution for MIS
+      mask *= c;
+      float misWeight = 1.0;
+      if(use_mis && !bounceIsSpecular && sample_lights && depth > 0){
         vec3 lightDir = normalize(hit.pos - r.o);
-        float lightPdf = lightSamplingPdf(mesh, r.o, lightDir);
-        float brdfPdf = cosineHemispherePdf(lightDir, hit.n);
-        
-        // MIS weight for BRDF sampling
-        float misWeight = powerHeuristic(1.0, brdfPdf, 1.0, lightPdf);
-        
-        mask *= c;
-        acc += mask * e * misWeight;
-      } else {
-        mask *= c;
-        acc += mask*e;
+        float lPdf = lightSamplingPdf(mesh, r.o, lightDir);
+        float bPdf = cosineHemispherePdf(lightDir, prev_nl);
+        misWeight = powerHeuristic(1.0, bPdf, 1.0, lPdf);
       }
+      acc += mask * e * misWeight;
       break;
     }
 
+    // Save this surface's outward normal before brdf() updates the ray direction.
+    prev_nl = hit.n * inside;
     brdf(hit, c, e, t, inside, r, mask, acc, bounceIsSpecular, seed, float(depth));
 
     // Early termination for low contribution
@@ -1513,10 +2154,19 @@ vec3 radiance(Ray r, float seed){
 //-----------------------------------------------------
 
 void main(void){
+#ifdef USE_RESTIR
+    // Initialize global reservoir
+    g_final_reservoir = EMPTY_RESERVOIR;
+#endif
+    
     vec2 st = 2.0 * gl_FragCoord.xy / u_resolution - 1.;
     float aspect = u_resolution.x/u_resolution.y;
 
     float seed = hash(dot( gl_FragCoord.xy, vec2(12.9898, 78.233) ) + 1113.1*float(u_frame));
+
+#ifdef USE_SPECTRAL
+    g_hero_wavelength = hash(seed + 4821.73) * 340.0 + 380.0;
+#endif
 
     //camera setup
     float theta = u_camParams.x*RAD;
@@ -1527,14 +2177,10 @@ void main(void){
     vec3 u = normalize(cross(w,vec3(0.0, 1.0, 0.0)));
     vec3 v = cross(u, w);
 
-    // Optimized AA offset calculation
-    float r1 = hash(seed+13.271);
-    float r2 = hash(seed+63.216);
-    
-    vec2 d = vec2(
-      r1 < 0.5 ? sqrt(r1*2.0) - 1.0 : 1.0 - sqrt(2.0 - r1*2.0),
-      r2 < 0.5 ? sqrt(r2*2.0) - 1.0 : 1.0 - sqrt(2.0 - r2*2.0)
-    ) / (u_resolution * 0.5) + st;
+    vec2 rAA  = vec2(hash(seed+13.271), hash(seed+63.216));
+    vec2 flip = step(vec2(0.5), rAA);
+    vec2 h    = mix(rAA, 1.0 - rAA, flip);
+    vec2 d    = mix(sqrt(2.0*h) - 1.0, 1.0 - sqrt(2.0*h), flip) / (u_resolution * 0.5) + st;
 
     vec3 focalPoint = normalize(d.x * u * uULen + d.y * v * uVLen  + w) * u_camParams.z;
 
@@ -1545,5 +2191,35 @@ void main(void){
 
     // primary ray
     Ray r = Ray(u_camPos + randomAperturePos, normalize(focalPoint - randomAperturePos));
-    FragColor.rgb = texelFetch(u_bufferA, ivec2(gl_FragCoord.xy), 0).rgb + radiance(r, seed);
+    
+    // Get current frame radiance
+    vec3 currentFrame = radiance(r, seed);
+
+#ifdef USE_SPECTRAL
+    currentFrame *= wavelengthToRGB(g_hero_wavelength);
+#endif
+
+    // For animated scenes (real-time mode), use temporal accumulation
+    // For static scenes, accumulate with previous frames
+    if (RENDER_MODE == 1) {
+        // Real-time mode with temporal accumulation
+        vec3 previousFrame = texelFetch(u_bufferA, ivec2(gl_FragCoord.xy), 0).rgb;
+        
+        // Exponential moving average for temporal accumulation
+        float alpha = 1.0 / float(u_temporalFrames);
+        FragColor.rgb = mix(previousFrame, currentFrame, alpha);
+    } else {
+        // Accumulation mode: add to previous frames
+        FragColor.rgb = texelFetch(u_bufferA, ivec2(gl_FragCoord.xy), 0).rgb + currentFrame;
+    }
+    
+#ifdef USE_RESTIR
+    // Output ReSTIR reservoir data to multiple render targets
+    ReSTIRData = packReservoirMain(g_final_reservoir);
+    ReSTIRAux = packReservoirAux(g_final_reservoir);
+#else
+    // Output empty data when ReSTIR is disabled
+    ReSTIRData = vec4(0.0);
+    ReSTIRAux = vec4(0.0);
+#endif
 }

@@ -29,20 +29,5 @@ void main(){
 
   vec3 col = texelFetch( u_bufferA, ivec2(gl_FragCoord.xy), 0 ).rgb * u_cont;
 
-#if 0
-
-  col *= exposure;
-  float sum = col.x + col.y + col.z;
-  float x = col.x / sum;
-  float y = col.y / sum;
-
-  // compute Reinhard tonemapping scale factor
-  float scale = (1.0 + col.y/(whitepoint*whitepoint)) / (1.0 + col.y);
-  col.y *= scale;
-  col.x = x * col.y / y;
-  col.z = (1.0 - x - y) * (col.y / y);
-
-#endif
-
   FragColor = vec4(pow(col, gamma), 1.0);
 }

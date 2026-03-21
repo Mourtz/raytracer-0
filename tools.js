@@ -1,68 +1,8 @@
 "use strict";
 
-function fillArray(array, type, num) {
-  for (let i = 0; i < num; i++) {
-    array[i] = new type();
-  }
-  return array;
-}
-
 Number.prototype.clamp = function (min, max) {
   return Math.min(Math.max(this, min), max);
 };
-
-function vec4array_to_f32Array(array) {
-  let i = 0;
-  let j = 0;
-  let f32 = new Float32Array(array.length * 4);
-  while (i < array.length) {
-    let v = array[i];
-    f32[j] = v.x;
-    f32[j + 1] = v.y;
-    f32[j + 2] = v.z;
-    f32[j + 3] = v.w;
-    i = i + 1;
-    j = j + 4;
-  }
-  return f32;
-}
-
-function vec3array_to_f32Array(array) {
-  let i = 0;
-  let j = 0;
-  let f32 = new Float32Array(array.length * 3);
-  while (i < array.length) {
-    let v = array[i];
-    f32[j] = v.x;
-    f32[j + 1] = v.y;
-    f32[j + 2] = v.z;
-    i = i + 1;
-    j = j + 3;
-  }
-  return f32;
-}
-
-function vec2array_to_f32Array(array) {
-  let i = 0;
-  let j = 0;
-  let f32 = new Float32Array(array.length * 2);
-  while (i < array.length) {
-    let v = array[i];
-    f32[j] = v.x;
-    f32[j + 1] = v.y;
-    i = i + 1;
-    j = j + 2;
-  }
-  return f32;
-}
-
-function sgn(v) {
-  if (v > 0.0) {
-    return 1.0;
-  } else {
-    return -1.0;
-  }
-}
 
 function fetchHTTP(url) {
   let request = new XMLHttpRequest();
@@ -118,28 +58,6 @@ function parseShader(filepath, sandbox) {
 
   let result = line.join("\n");
   return result;
-}
-
-function parseSDF(filepath) {
-  if (!filepath) return console.error("You got to give a filepath");
-
-  let string = fetchHTTP(filepath);
-  let line = string.split("\n");
-
-  let dimensions = line[0].split(" ");
-  let bb_min = line[1].split(" ");
-  let bb_max = line[2].split(" ");
-
-  if (true) {
-    return {
-      "dimensions": dimensions,
-      "bb_min": bb_min,
-      "bb_max": bb_max,
-      "values": new Float32Array(line.slice(3))
-    };
-  } else {
-    return new Float32Array(dimensions.concat(bb_min).concat(bb_max).concat(line.slice(3)));
-  }
 }
 
 function elementInViewport(el) {
