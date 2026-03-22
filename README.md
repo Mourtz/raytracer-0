@@ -23,6 +23,8 @@ of all the browsers I 've tested.
 * **cosine weighted** importance sampling
 * **MIS** (Multiple Importance Sampling)
 * **ReSTIR** (Reservoir Spatiotemporal Importance Resampling)
+* **Homogeneous** participating media
+* **Spectral**
 
 [**Demo**](https://mourtz.github.io/raytracer-0/) (Let it fetch all the required data before hitting the render button!)
 
@@ -32,13 +34,9 @@ of all the browsers I 've tested.
 * bump mapping
 * split the main shader into three (**1st** for eye path tracing, **2nd** for light path tracing, **3rd** for merging the paths) to reduce the probability of the driver crashing during compilation.
 * HLBVH support(some work has been done already)
-* participating media
+* Heterogeneous participating media
 * volumetric SDF
 * BSSRDF
-
-## Future Plans
-I have already started working on my next raytracer written in C++. The library I chose to use for GPU acceleration is **OpenCL** 1.2 by Khronos.
-However, **Arrayfire** seems like a good tool I could make use of in the future.
 
 ## Gallery
 
