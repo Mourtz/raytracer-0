@@ -1733,45 +1733,17 @@ vec3 sampleLightsReSTIR(const vec3 hit_pos, const vec3 hit_normal, const Materia
         Reservoir neighbor_reservoir = sampleSpatialReservoir(neighbor_coord, hit_pos, hit_normal);
         
         if (neighbor_reservoir.M > 0.0) {
-            // Optimized spatial validation with early exits
-            bool is_valid = true;
-            
-            // Early bounds check
-            if (any(lessThan(neighbor_coord, vec2(0.0))) || any(greaterThan(neighbor_coord, vec2(1.0)))) {
-                is_valid = false;
-            }
-            
-            if (is_valid) {
-                // Distance-based coherence check
-                vec2 coord_diff = neighbor_coord - screen_coord;
-                float coord_distance_sq = dot(coord_diff, coord_diff);
-                float max_distance_sq = pow(SPATIAL_RADIUS / min(u_resolution.x, u_resolution.y), 2.0);
-                
-                if (coord_distance_sq > max_distance_sq) {
-                    is_valid = false;
-                }
-            }
-            
-            if (is_valid && neighbor_reservoir.light_index >= 0) {
-                // Light distance check with squared distance for efficiency
+            // Light distance check
+            if (neighbor_reservoir.light_index >= 0) {
                 vec3 light_diff = neighbor_reservoir.light_pos - hit_pos;
-                float light_distance_sq = dot(light_diff, light_diff);
-                if (light_distance_sq > 225.0) { // 15.0^2
-                    is_valid = false;
-                }
+                if (dot(light_diff, light_diff) > 225.0) continue; // 15.0^2
             }
-            
-            if (is_valid) {
-                // Age and quality checks
-                float age_threshold = RENDER_MODE == 1 ? 2.0 : float(MAX_RESERVOIR_AGE) * 0.8;
-                if (neighbor_reservoir.age > age_threshold || spatial_rand.x < 0.03) {
-                    is_valid = false;
-                }
-            }
-            
-            if (is_valid) {
-                combineReservoirs(final_reservoir, neighbor_reservoir, hit_pos, hit_normal, mat, spatial_rand.y);
-            }
+
+            // Age and quality checks
+            float age_threshold = RENDER_MODE == 1 ? 2.0 : float(MAX_RESERVOIR_AGE) * 0.8;
+            if (neighbor_reservoir.age > age_threshold || spatial_rand.x < 0.03) continue;
+
+            combineReservoirs(final_reservoir, neighbor_reservoir, hit_pos, hit_normal, mat, spatial_rand.y);
         }
     }
     
@@ -1938,8 +1910,7 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
           totalContribution = sampleLightsReSTIR(x, nl, meshes[hit.index].mat, restir_seed);
         } else {
           vec3 enhancedMisContribution = vec3(0.0);
-          float totalImportance = 0.0;
-          
+
           for(int i = 0; i < num_lights; ++i){
             int idx = int(light_index[i]);
             if(idx < 0) continue;
@@ -1951,33 +1922,17 @@ void brdf(in Hit hit, in vec3 f, in vec3 e, in float t, in float inside, inout R
             float distance_sq = dot(light_vec, light_vec);
             float cos_theta = max(0.0, dot(nl, light_dir));
             float importance = cos_theta * dot(light.mat.e, vec3(0.2126, 0.7152, 0.0722)) * inversesqrt(distance_sq + 1.0);
-            totalImportance += importance;
-          }
-          
-          for(int i = 0; i < num_lights; ++i){
-            int idx = int(light_index[i]);
-            if(idx < 0) continue;
-            Mesh light = meshes[idx];
-            if(light.mat.t != LIGHT) continue;
+            if (importance < kImportanceThreshold) continue;
 
-            vec3 light_vec = light.pos - x;
-            vec3 light_dir = normalize(light_vec);
-            float distance_sq = dot(light_vec, light_vec);
-            float cos_theta = max(0.0, dot(nl, light_dir));
-            float importance = cos_theta * dot(light.mat.e, vec3(0.2126, 0.7152, 0.0722)) * inversesqrt(distance_sq + 1.0);
-
-            float impStep = step(kImportanceThreshold, importance);
-            float totalImpStep = step(0.0, totalImportance);
             vec3 lightSample = calcDirectLighting(light, x, nl, seed + kSeedA*float(u_frame) + kSeedB + bounce*kSeedC + float(i)*kSeedD, idx);
-            float sampleLenSq = dot(lightSample, lightSample);
-            float sampleStep = step(kImportanceThreshold * kImportanceThreshold, sampleLenSq);
-            float valid = impStep * totalImpStep * sampleStep;
+            if (dot(lightSample, lightSample) < kImportanceThreshold * kImportanceThreshold) continue;
+
             float lightPdf = lightSamplingPdf(light, x, light_dir);
             float brdfPdf = cosineHemispherePdf(light_dir, nl);
             float misWeight = powerHeuristic(1.0, lightPdf, 1.0, brdfPdf);
-            enhancedMisContribution += lightSample * misWeight * valid;
+            enhancedMisContribution += lightSample * misWeight;
           }
-          
+
           totalContribution = enhancedMisContribution;
         }
         
@@ -2046,7 +2001,7 @@ vec3 radiance(Ray r, float seed){
     // weight = σ_s/σ_t (single-scatter albedo; transmittance/pdf cancel exactly).
     {
         float scatter_d = -log(max(hash(seed + 4729.3 + float(depth)*991.1), 1e-6)) / VOL_SIGMA_T;
-        float t_bound   = (t < INFINITY) ? t : 1e4;
+        float t_bound   = min(INFINITY, t);
         if (scatter_d < t_bound) {
             vec3 scatter_pos = r.o + scatter_d * r.d;
 
