@@ -181,14 +181,6 @@ const lowp int light_index[1] = int[](5);`;
     });
 
     this.createTexture({
-      name: "restir_aux_tex",
-      width: this.canvas.width,
-      height: this.canvas.height,
-      color: [gl.RGBA32F, gl.RGBA],
-      type: gl.FLOAT
-    });
-
-    this.createTexture({
       name: "restir_aux_back_tex",
       width: this.canvas.width,
       height: this.canvas.height,
@@ -196,8 +188,6 @@ const lowp int light_index[1] = int[](5);`;
       type: gl.FLOAT
     });
 
-    // Enhanced temporal history buffers for better ReSTIR temporal reuse (reduced to 2 levels)
-    // History buffer 1 (previous frame)
     this.createTexture({
       name: "restir_history1_tex",
       width: this.canvas.width,
@@ -208,6 +198,22 @@ const lowp int light_index[1] = int[](5);`;
 
     this.createTexture({
       name: "restir_history1_aux_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_history2_tex",
+      width: this.canvas.width,
+      height: this.canvas.height,
+      color: [gl.RGBA32F, gl.RGBA],
+      type: gl.FLOAT
+    });
+
+    this.createTexture({
+      name: "restir_history2_aux_tex",
       width: this.canvas.width,
       height: this.canvas.height,
       color: [gl.RGBA32F, gl.RGBA],
@@ -1013,10 +1019,10 @@ const lowp int light_index[1] = int[](5);`;
 
     // Bind ReSTIR buffers (read from back buffers to avoid feedback loop)
     gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_buffer"]);
-    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_buffer_back_tex"] || this.textures["restir_buffer_tex"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_buffer_back_tex"]);
 
     gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_aux"]);
-    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_aux_back_tex"] || this.textures["restir_aux_tex"]);
+    gl.bindTexture(gl.TEXTURE_2D, this.textures["restir_aux_back_tex"]);
 
     // Bind enhanced temporal history buffers for multi-frame ReSTIR
     gl.activeTexture(gl.TEXTURE0 + this.frontTarget["uniforms"]["restir_history1"]);
